@@ -59,11 +59,26 @@ df = CCXTLoader(cfg.exchange, cfg.symbol, cfg.timeframe, since=cfg.since, cache_
 
 1. `preprocess.clean_ohlcv` parses timestamps into a UTC index, sorts, removes duplicates and invalid candles, and fills missing candles with the previous close and zero volume (flagged in `is_filled`).
 2. `indicators.add_technical_indicators` adds the 16 `FEATURE_COLUMNS`: returns, candle shape, RSI, MACD, ATR, moving-average distance, Bollinger %B, volatility, relative volume and time-of-day/weekday. All are scale-free and use only past candles.
-3. `preprocess.split_chronological` splits by time (oldest data for training), and `preprocess.add_target` adds the target: the log return over the next `horizon` candles, computed within each split.
+3. `preprocess.split_chronological` splits by time (oldest data for training), and `preprocess.add_target` labels each candle up/flat/down by the log return over the next `TARGET_HORIZON` candles; moves within ±`FLAT_THRESHOLD` (default 0.2%, about a round-trip fee) count as flat. Labels are computed within each split.
 4. `preprocess.FeatureScaler` standardizes features using training-period statistics only.
-5. `preprocess.make_supervised_sequences` builds sliding windows: `X` has shape `(samples, SEQUENCE_LENGTH, 16)` and `y` has shape `(samples, 1)`.
+5. `preprocess.make_supervised_sequences` builds sliding windows: `X` has shape `(samples, SEQUENCE_LENGTH, 16)`, `y` holds class indices `(samples,)` for `nn.CrossEntropyLoss`, and `returns` keeps the underlying forward returns for evaluating trades.
 
-`python main.py` downloads the configured market and prints the resulting dataset shapes.
+`python main.py` downloads the configured market, prints dataset shapes and class counts, and builds the configured model.
+
+## Models
+
+Set `MODEL_NAME` to pick a model. All map `(batch, SEQUENCE_LENGTH, features)` to 3 class logits (down, flat, up).
+
+| `MODEL_NAME` | Model |
+|---|---|
+| `constant` | Baseline: ignores the input and learns class frequencies |
+| `linear` | Baseline: logistic regression over the flattened window |
+| `mlp` | Baseline: one hidden layer over the flattened window |
+| `lstm`, `gru` | Recurrent network, last hidden state through LayerNorm, dropout and a linear head |
+
+A recurrent model is only useful if it beats the baselines on validation data.
+
+Checkpoints store, next to the weights, the model config and the preprocessing settings (`PreparedData.metadata()`: feature list, fitted scaler, horizon, threshold), so `training.checkpoint.load_model(path)` rebuilds a trained model without any other files.
 
 The first download of hourly data since 2020 takes around 60 requests. Some exchanges (e.g. Kraken) only serve recent candles through this API, so deep history is best fetched from exchanges like Binance.
 
