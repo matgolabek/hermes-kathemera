@@ -41,6 +41,27 @@ deactivate
 
 Copy `.env.example` values into your environment before running code.
 
+## Market data
+
+`data_pipeline.loaders.CCXTLoader` downloads OHLCV candles through [CCXT](https://github.com/ccxt/ccxt), a library that talks to many exchanges' public APIs (no API key is needed for market data). It pages through history, since exchanges return a limited number of candles per request, and caches the result as CSV in `data/cache/`. Later runs only download candles newer than the cache. Only closed candles are returned; timestamps are candle open times in UTC milliseconds.
+
+```python
+from config import get_data_config
+from data_pipeline.loaders import CCXTLoader
+
+cfg = get_data_config()
+df = CCXTLoader(cfg.exchange, cfg.symbol, cfg.timeframe, since=cfg.since, cache_dir=cfg.cache_dir).load()
+```
+
+The first download of hourly data since 2020 takes around 60 requests. Some exchanges (e.g. Kraken) only serve recent candles through this API, so deep history is best fetched from exchanges like Binance.
+
+## Tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## Run
 
 ```bash
