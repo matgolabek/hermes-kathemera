@@ -53,6 +53,18 @@ cfg = get_data_config()
 df = CCXTLoader(cfg.exchange, cfg.symbol, cfg.timeframe, since=cfg.since, cache_dir=cfg.cache_dir).load()
 ```
 
+### From candles to model inputs
+
+`data_pipeline.pipeline.prepare_datasets` turns raw candles into train/validation/test arrays:
+
+1. `preprocess.clean_ohlcv` parses timestamps into a UTC index, sorts, removes duplicates and invalid candles, and fills missing candles with the previous close and zero volume (flagged in `is_filled`).
+2. `indicators.add_technical_indicators` adds the 16 `FEATURE_COLUMNS`: returns, candle shape, RSI, MACD, ATR, moving-average distance, Bollinger %B, volatility, relative volume and time-of-day/weekday. All are scale-free and use only past candles.
+3. `preprocess.split_chronological` splits by time (oldest data for training), and `preprocess.add_target` adds the target: the log return over the next `horizon` candles, computed within each split.
+4. `preprocess.FeatureScaler` standardizes features using training-period statistics only.
+5. `preprocess.make_supervised_sequences` builds sliding windows: `X` has shape `(samples, SEQUENCE_LENGTH, 16)` and `y` has shape `(samples, 1)`.
+
+`python main.py` downloads the configured market and prints the resulting dataset shapes.
+
 The first download of hourly data since 2020 takes around 60 requests. Some exchanges (e.g. Kraken) only serve recent candles through this API, so deep history is best fetched from exchanges like Binance.
 
 ## Tests
