@@ -19,6 +19,8 @@ class DataConfig:
     sequence_length: int
     train_split: float
     val_split: float
+    horizon: int
+    flat_threshold: float
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,7 @@ class ModelConfig:
     """Configuration for neural network architecture."""
 
     model_name: str
+    sequence_length: int
     input_size: int
     hidden_size: int
     num_layers: int
@@ -70,6 +73,8 @@ def get_data_config() -> DataConfig:
         sequence_length=int(_get_env("SEQUENCE_LENGTH", "64")),
         train_split=float(_get_env("TRAIN_SPLIT", "0.8")),
         val_split=float(_get_env("VAL_SPLIT", "0.1")),
+        horizon=int(_get_env("TARGET_HORIZON", "1")),
+        flat_threshold=float(_get_env("FLAT_THRESHOLD", "0.002")),
     )
 
 
@@ -77,10 +82,11 @@ def get_model_config() -> ModelConfig:
     """Build model config from environment variables."""
     return ModelConfig(
         model_name=_get_env("MODEL_NAME", "lstm"),
+        sequence_length=int(_get_env("SEQUENCE_LENGTH", "64")),
         input_size=int(_get_env("INPUT_SIZE", "16")),
         hidden_size=int(_get_env("HIDDEN_SIZE", "64")),
         num_layers=int(_get_env("NUM_LAYERS", "2")),
-        output_size=int(_get_env("OUTPUT_SIZE", "1")),
+        output_size=int(_get_env("OUTPUT_SIZE", "3")),
         dropout=float(_get_env("DROPOUT", "0.1")),
     )
 

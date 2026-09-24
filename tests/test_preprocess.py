@@ -7,6 +7,9 @@ import pandas as pd
 import pytest
 
 from data_pipeline.preprocess import (
+    DOWN,
+    FLAT,
+    UP,
     FeatureScaler,
     add_target,
     clean_ohlcv,
@@ -80,7 +83,16 @@ def test_add_target_is_forward_log_return(raw_ohlcv):
 
     expected = np.log(df["close"].iloc[2] / df["close"].iloc[0])
     assert df["target"].iloc[0] == pytest.approx(expected)
-    assert df["target"].iloc[-2:].isna().all()
+    assert df[["target", "label"]].iloc[-2:].isna().all().all()
+
+
+def test_add_target_labels_up_flat_down():
+    index = pd.date_range("2024-01-01", periods=5, freq="h", tz="UTC")
+    close = [100.0, 101.0, 101.1, 100.0, 100.0]  # +1%, +0.1%, -1.1%, 0%
+    df = add_target(pd.DataFrame({"close": close}, index=index), flat_threshold=0.002)
+
+    assert df["label"].iloc[:4].tolist() == [UP, FLAT, DOWN, FLAT]
+    assert np.isnan(df["label"].iloc[4])
 
 
 def test_split_is_chronological(raw_ohlcv):
@@ -95,6 +107,15 @@ def test_split_is_chronological(raw_ohlcv):
 def test_split_rejects_bad_fractions(raw_ohlcv):
     with pytest.raises(ValueError):
         split_chronological(raw_ohlcv, 0.9, 0.2)
+
+
+def test_scaler_round_trips_through_dict():
+    scaler = FeatureScaler.fit(pd.DataFrame({"a": [1.0, 2.0, 3.0]}), ["a"])
+    df = pd.DataFrame({"a": [5.0]})
+
+    restored = FeatureScaler.from_dict(scaler.to_dict())
+
+    pd.testing.assert_frame_equal(restored.transform(df), scaler.transform(df))
 
 
 def test_scaler_uses_fit_statistics():
@@ -121,6 +142,16 @@ def test_sequences_shape_and_alignment():
     assert X[0, :, 1].tolist() == [0.0, 10.0, 20.0]
     assert y[0, 0] == pytest.approx(0.02)  # target of the window's last row
     assert ends[0] == index[2] and ends[-1] == index[8]
+
+
+def test_sequences_multiple_targets_drop_rows_with_any_nan():
+    index = pd.date_range("2024-01-01", periods=5, freq="h", tz="UTC")
+    df = pd.DataFrame({"f": np.arange(5.0), "a": [0, 1, 2, np.nan, 4.0], "b": [0, 1, 2, 3, np.nan]}, index=index)
+
+    X, y, ends = make_supervised_sequences(df, 2, ["f"], target_columns=("a", "b"))
+
+    assert y.shape == (2, 2)
+    assert y.tolist() == [[1.0, 1.0], [2.0, 2.0]]
 
 
 def test_sequences_short_input_is_empty():

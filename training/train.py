@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -49,8 +50,12 @@ def train_model(
     epochs: int,
     device: str,
     checkpoint_path: Path,
+    metadata: Optional[dict[str, Any]] = None,
 ) -> None:
-    """Train model and save best checkpoint by validation loss."""
+    """Train model and save best checkpoint by validation loss.
+
+    ``metadata`` is stored in the checkpoint; see ``training.checkpoint.save_checkpoint``.
+    """
     best_val_loss = float("inf")
 
     for epoch in range(1, epochs + 1):
@@ -59,6 +64,6 @@ def train_model(
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            save_checkpoint(model, optimizer, epoch, checkpoint_path)
+            save_checkpoint(model, optimizer, epoch, checkpoint_path, metadata)
 
         print(f"epoch={epoch} train_loss={train_loss:.6f} val_loss={val_loss:.6f}")

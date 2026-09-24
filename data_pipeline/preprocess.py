@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 PRICE_COLUMNS = ["open", "high", "low", "close"]
 OHLCV_COLUMNS = [*PRICE_COLUMNS, "volume"]
 
+# Class indices of the up/flat/down label, as used by the classification models.
+CLASS_NAMES = ["down", "flat", "up"]
+DOWN, FLAT, UP = range(len(CLASS_NAMES))
+
 
 def clean_ohlcv(df: pd.DataFrame, timeframe: Optional[str] = None) -> pd.DataFrame:
     """Clean raw OHLCV rows into a gap-free, time-indexed frame.
@@ -84,13 +88,23 @@ def _infer_freq(index: pd.DatetimeIndex) -> pd.Timedelta:
     return pd.Series(index).diff().dropna().mode().iloc[0]
 
 
-def add_target(df: pd.DataFrame, horizon: int = 1) -> pd.DataFrame:
-    """Add ``target``: the log return from this candle's close to the close ``horizon`` candles later.
+def add_target(df: pd.DataFrame, horizon: int = 1, flat_threshold: float = 0.0) -> pd.DataFrame:
+    """Add the forward return and its up/flat/down class.
 
-    The last ``horizon`` rows have no future close and get NaN.
+    - ``target``: log return from this candle's close to the close ``horizon`` candles later.
+    - ``label``: ``UP`` if ``target > flat_threshold``, ``DOWN`` if ``target < -flat_threshold``,
+      otherwise ``FLAT``. Set the threshold to about the round-trip trading cost, so
+      ``FLAT`` means "a move too small to trade profitably".
+
+    The last ``horizon`` rows have no future close and get NaN in both columns.
     """
     df = df.copy()
-    df["target"] = np.log(df["close"].shift(-horizon) / df["close"])
+    target = np.log(df["close"].shift(-horizon) / df["close"])
+    label = pd.Series(float(FLAT), index=df.index)
+    label[target > flat_threshold] = UP
+    label[target < -flat_threshold] = DOWN
+    df["target"] = target
+    df["label"] = label.where(target.notna())
     return df
 
 
@@ -111,6 +125,15 @@ class FeatureScaler:
     mean: pd.Series
     std: pd.Series
 
+    def to_dict(self) -> dict[str, dict[str, float]]:
+        """Plain-dict form for saving alongside model checkpoints."""
+        return {"mean": {k: float(v) for k, v in self.mean.items()}, "std": {k: float(v) for k, v in self.std.items()}}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, dict[str, float]]) -> "FeatureScaler":
+        """Rebuild a scaler saved with ``to_dict``."""
+        return cls(mean=pd.Series(data["mean"], dtype="float64"), std=pd.Series(data["std"], dtype="float64"))
+
     @classmethod
     def fit(cls, df: pd.DataFrame, columns: Sequence[str]) -> "FeatureScaler":
         """Compute per-column mean and standard deviation."""
@@ -130,32 +153,32 @@ def make_supervised_sequences(
     df: pd.DataFrame,
     sequence_length: int,
     feature_columns: Sequence[str],
-    target_column: str = "target",
+    target_columns: Sequence[str] = ("target",),
 ) -> tuple[np.ndarray, np.ndarray, pd.DatetimeIndex]:
     """Turn a time-ordered frame into sliding windows for sequence models.
 
-    Sample ``i`` holds the ``sequence_length`` rows ending at row ``t``; its target is
-    ``target_column`` at row ``t`` (e.g. the return after ``t``). Rows whose target is
-    NaN are not used as window ends.
+    Sample ``i`` holds the ``sequence_length`` rows ending at row ``t``; its targets are
+    ``target_columns`` at row ``t`` (e.g. the return after ``t``). Rows with any NaN
+    target are not used as window ends.
 
     Returns:
         ``X`` with shape ``(samples, sequence_length, features)``, ``y`` with shape
-        ``(samples, 1)`` (matching a model with ``output_size=1``), both float32, and
-        the timestamp of each window's last row.
+        ``(samples, len(target_columns))``, both float32, and the timestamp of each
+        window's last row.
     """
     if len(df) < sequence_length:
         empty_x = np.empty((0, sequence_length, len(feature_columns)), dtype=np.float32)
-        return empty_x, np.empty((0, 1), dtype=np.float32), pd.DatetimeIndex([], name=df.index.name)
+        empty_y = np.empty((0, len(target_columns)), dtype=np.float32)
+        return empty_x, empty_y, pd.DatetimeIndex([], name=df.index.name)
 
     features = df[list(feature_columns)].to_numpy(dtype=np.float32)
     if np.isnan(features).any():
         raise ValueError("Feature columns contain NaN; drop indicator warm-up rows first")
 
     windows = sliding_window_view(features, sequence_length, axis=0).transpose(0, 2, 1)
-    targets = df[target_column].to_numpy(dtype=np.float32)[sequence_length - 1 :]
+    targets = df[list(target_columns)].to_numpy(dtype=np.float32)[sequence_length - 1 :]
     ends = df.index[sequence_length - 1 :]
 
-    keep = ~np.isnan(targets)
+    keep = ~np.isnan(targets).any(axis=1)
     X = np.ascontiguousarray(windows[keep])
-    y = targets[keep].reshape(-1, 1)
-    return X, y, ends[keep]
+    return X, targets[keep], ends[keep]

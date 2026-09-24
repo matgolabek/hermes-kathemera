@@ -6,6 +6,7 @@ import numpy as np
 
 from data_pipeline.indicators import FEATURE_COLUMNS
 from data_pipeline.pipeline import prepare_datasets
+from data_pipeline.preprocess import DOWN, FLAT, UP
 from tests.conftest import make_raw_ohlcv
 
 
@@ -14,9 +15,11 @@ def test_prepare_datasets_shapes_and_order():
 
     for split in (data.train, data.val, data.test):
         assert split.X.ndim == 3 and split.X.shape[1:] == (32, len(FEATURE_COLUMNS))
-        assert split.y.shape == (len(split), 1)
+        assert split.y.shape == (len(split),) and split.y.dtype == np.int64
+        assert split.returns.shape == (len(split),)
         assert len(split.timestamps) == len(split)
-        assert not np.isnan(split.X).any() and not np.isnan(split.y).any()
+        assert not np.isnan(split.X).any() and not np.isnan(split.returns).any()
+        assert set(np.unique(split.y)) <= {DOWN, FLAT, UP}
 
     assert data.train.timestamps[-1] < data.val.timestamps[0]
     assert data.val.timestamps[-1] < data.test.timestamps[0]
@@ -39,3 +42,24 @@ def test_targets_do_not_cross_split_boundaries():
     # The last training window must end at least `horizon` candles before validation data.
     gap_hours = (data.val.timestamps[0] - data.train.timestamps[-1]).total_seconds() / 3600
     assert gap_hours >= horizon
+
+
+def test_labels_match_returns_and_threshold():
+    data = prepare_datasets(make_raw_ohlcv(1000), 16, 0.7, 0.15, timeframe="1h", flat_threshold=0.005)
+
+    split = data.train
+    assert (split.y[split.returns > 0.005] == UP).all()
+    assert (split.y[split.returns < -0.005] == DOWN).all()
+    assert (split.y[np.abs(split.returns) <= 0.005] == FLAT).all()
+    assert sum(split.class_counts().values()) == len(split)
+
+
+def test_metadata_is_plain_and_complete():
+    data = prepare_datasets(make_raw_ohlcv(500), 16, 0.7, 0.15, timeframe="1h", horizon=2, flat_threshold=0.001)
+
+    meta = data.metadata()
+
+    assert meta["feature_columns"] == FEATURE_COLUMNS
+    assert set(meta["scaler"]["mean"]) == set(FEATURE_COLUMNS)
+    assert (meta["sequence_length"], meta["horizon"], meta["flat_threshold"]) == (16, 2, 0.001)
+    assert meta["class_names"] == ["down", "flat", "up"]
