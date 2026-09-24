@@ -11,8 +11,11 @@ from pathlib import Path
 class DataConfig:
     """Configuration for data loading and preprocessing."""
 
+    exchange: str
     symbol: str
     timeframe: str
+    since: str
+    cache_dir: Path
     sequence_length: int
     train_split: float
     val_split: float
@@ -59,8 +62,11 @@ def _get_env(name: str, default: str) -> str:
 def get_data_config() -> DataConfig:
     """Build data config from environment variables."""
     return DataConfig(
+        exchange=_get_env("EXCHANGE", "binance"),
         symbol=_get_env("SYMBOL", "BTC/USDT"),
         timeframe=_get_env("TIMEFRAME", "1h"),
+        since=_get_env("SINCE", "2020-01-01"),
+        cache_dir=Path(_get_env("DATA_CACHE_DIR", "data/cache")),
         sequence_length=int(_get_env("SEQUENCE_LENGTH", "64")),
         train_split=float(_get_env("TRAIN_SPLIT", "0.8")),
         val_split=float(_get_env("VAL_SPLIT", "0.1")),
