@@ -100,6 +100,26 @@ The comparison table reports, on the validation split:
 
 Keep the test split for the final decision: every look at it makes it a less honest estimate.
 
+## Backtest
+
+```bash
+python -m backtest.run                      # every trained model on the validation split
+python -m backtest.run --models lstm gru
+python -m backtest.run --allow-short --min-confidence 0.5
+python -m backtest.run --split test         # final check only
+```
+
+Each model's checkpoint is loaded with its own preprocessing (features, scaler, horizon, threshold), and its predictions are traded candle by candle:
+
+- The most likely class sets the position: up → long, down → short (with `ALLOW_SHORT`) or out, flat → out. Predictions below `MIN_CONFIDENCE` stay out.
+- A position is taken at a candle's close and held until the next close.
+- Every position change costs `FEE_RATE + SLIPPAGE` (default 0.1% + 0.05%) of the traded value; a long-to-short flip counts twice, and any open position is closed at the end.
+- Shorts ignore borrow and funding costs, so short results are optimistic.
+
+The table compares each model with buy-and-hold on the same candles: total and annualized return, Sharpe ratio, maximum drawdown, share of time in the market, number of trades, hit rate and total costs, plus the same return and Sharpe before costs. A model that is positive before costs and negative after has a signal too small to trade at that frequency. Equity curves and metrics are saved as `CHECKPOINT_DIR/backtest_<split>_equity.csv` and `backtest_<split>.json`.
+
+The backtest refuses to run if the chosen split overlaps the model's training period, which happens if the data (`SINCE`, the cache) changed after training; retrain in that case.
+
 ## Tests
 
 ```bash

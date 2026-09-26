@@ -52,6 +52,21 @@ class TrainingConfig:
 
 
 @dataclass(frozen=True)
+class BacktestConfig:
+    """Configuration for simulating trades from model predictions."""
+
+    fee_rate: float
+    slippage: float
+    allow_short: bool
+    min_confidence: float
+
+    @property
+    def cost_per_trade(self) -> float:
+        """Cost of changing the position by one unit, as a fraction of the traded value."""
+        return self.fee_rate + self.slippage
+
+
+@dataclass(frozen=True)
 class ExecutionConfig:
     """Configuration for live execution and risk constraints."""
 
@@ -107,6 +122,16 @@ def get_training_config() -> TrainingConfig:
         patience=int(_get_env("PATIENCE", "5")),
         grad_clip=float(_get_env("GRAD_CLIP", "1.0")),
         seed=int(_get_env("SEED", "42")),
+    )
+
+
+def get_backtest_config() -> BacktestConfig:
+    """Build backtest config from environment variables."""
+    return BacktestConfig(
+        fee_rate=float(_get_env("FEE_RATE", "0.001")),
+        slippage=float(_get_env("SLIPPAGE", "0.0005")),
+        allow_short=_get_env("ALLOW_SHORT", "false").lower() in {"1", "true", "yes"},
+        min_confidence=float(_get_env("MIN_CONFIDENCE", "0.0")),
     )
 
 

@@ -92,11 +92,13 @@ def add_target(df: pd.DataFrame, horizon: int = 1, flat_threshold: float = 0.0) 
     """Add the forward return and its up/flat/down class.
 
     - ``target``: log return from this candle's close to the close ``horizon`` candles later.
+    - ``next_return``: log return to the next candle's close, which is what a position
+      held for one candle earns (equal to ``target`` when ``horizon`` is 1).
     - ``label``: ``UP`` if ``target > flat_threshold``, ``DOWN`` if ``target < -flat_threshold``,
       otherwise ``FLAT``. Set the threshold to about the round-trip trading cost, so
       ``FLAT`` means "a move too small to trade profitably".
 
-    The last ``horizon`` rows have no future close and get NaN in both columns.
+    The last ``horizon`` rows have no future close and get NaN in ``target`` and ``label``.
     """
     df = df.copy()
     target = np.log(df["close"].shift(-horizon) / df["close"])
@@ -104,6 +106,7 @@ def add_target(df: pd.DataFrame, horizon: int = 1, flat_threshold: float = 0.0) 
     label[target > flat_threshold] = UP
     label[target < -flat_threshold] = DOWN
     df["target"] = target
+    df["next_return"] = np.log(df["close"].shift(-1) / df["close"])
     df["label"] = label.where(target.notna())
     return df
 

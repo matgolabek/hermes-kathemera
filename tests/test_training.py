@@ -28,7 +28,7 @@ def learnable_split(n: int, seed: int, seq_len: int = 8, features: int = 4) -> S
     signal = X[:, -1, 0]
     y = np.where(signal > 0.4, UP, np.where(signal < -0.4, DOWN, FLAT)).astype(np.int64)
     timestamps = pd.date_range("2024-01-01", periods=n, freq="h", tz="UTC")
-    return SequenceSet(X=X, y=y, returns=signal / 100, timestamps=timestamps)
+    return SequenceSet(X=X, y=y, returns=signal / 100, next_returns=signal / 100, timestamps=timestamps)
 
 
 def learnable_data() -> PreparedData:

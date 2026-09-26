@@ -1,12 +1,101 @@
-"""Out-of-sample model evaluation and strategy simulation hooks."""
+"""Turn model predictions into positions and simulate trading them with costs."""
 
 from __future__ import annotations
 
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
+import pandas as pd
 
 from backtest.metrics import BacktestMetrics, calculate_metrics
+from config import BacktestConfig
+from data_pipeline.preprocess import DOWN, UP
 
 
-def run_backtest(y_true: Sequence[float], y_pred: Sequence[float], strategy_returns: Sequence[float]) -> BacktestMetrics:
-    """Run backtest evaluation over out-of-sample predictions."""
-    return calculate_metrics(y_true=y_true, y_pred=y_pred, strategy_returns=strategy_returns)
+@dataclass
+class BacktestResult:
+    """Per-candle simulation and its summary metrics.
+
+    ``frame`` columns: ``position`` (-1, 0 or 1), ``asset_return`` (next-candle simple
+    return), ``gross_return`` (before costs), ``cost``, ``net_return`` and ``equity``
+    (growth of 1 unit, after costs).
+    """
+
+    frame: pd.DataFrame
+    metrics: BacktestMetrics
+    gross_metrics: BacktestMetrics
+
+
+def positions_from_probs(probs: np.ndarray, allow_short: bool = False, min_confidence: float = 0.0) -> np.ndarray:
+    """Map class probabilities to positions.
+
+    The most likely class decides: up → long (1), down → short (-1) if shorting is
+    allowed, otherwise out (0), flat → out. Predictions whose probability is below
+    ``min_confidence`` are treated as out.
+    """
+    predicted = probs.argmax(axis=1)
+    positions = np.zeros(len(probs), dtype=np.int8)
+    positions[predicted == UP] = 1
+    if allow_short:
+        positions[predicted == DOWN] = -1
+    positions[probs.max(axis=1) < min_confidence] = 0
+    return positions
+
+
+def simulate(
+    positions: np.ndarray,
+    next_log_returns: np.ndarray,
+    cost_per_trade: float,
+    timestamps: Optional[pd.DatetimeIndex] = None,
+) -> pd.DataFrame:
+    """Simulate holding ``positions[t]`` from candle ``t``'s close to the next close.
+
+    The position is assumed to be traded at candle ``t``'s close, right after the model
+    sees it. Every change in position costs ``cost_per_trade`` per unit (a flip from
+    long to short counts twice), and any position left open is closed at the end.
+    Shorts are modelled as the negative of the asset return, ignoring borrow and
+    funding costs.
+    """
+    positions = np.asarray(positions, dtype=np.float64)
+    if positions.shape != np.shape(next_log_returns):
+        raise ValueError("positions and next_log_returns must have the same length")
+
+    asset_return = np.expm1(np.asarray(next_log_returns, dtype=np.float64))
+    turnover = np.abs(np.diff(positions, prepend=0.0))
+    if len(turnover):
+        turnover[-1] += abs(positions[-1])
+    cost = turnover * cost_per_trade
+    gross = positions * asset_return
+    net = gross - cost
+
+    return pd.DataFrame(
+        {
+            "position": positions.astype(np.int8),
+            "asset_return": asset_return,
+            "gross_return": gross,
+            "turnover": turnover,
+            "cost": cost,
+            "net_return": net,
+            "equity": np.cumprod(1.0 + net),
+        },
+        index=timestamps,
+    )
+
+
+def run_backtest(
+    positions: np.ndarray,
+    next_log_returns: np.ndarray,
+    config: BacktestConfig,
+    periods: float,
+    timestamps: Optional[pd.DatetimeIndex] = None,
+) -> BacktestResult:
+    """Simulate ``positions`` with the configured costs and summarize the result."""
+    frame = simulate(positions, next_log_returns, config.cost_per_trade, timestamps)
+    trades = int(np.count_nonzero(frame["turnover"]))
+    zero = np.zeros(len(frame))
+    return BacktestResult(
+        frame=frame,
+        metrics=calculate_metrics(frame["net_return"].to_numpy(), frame["position"].to_numpy(), frame["cost"].to_numpy(), trades, periods),
+        gross_metrics=calculate_metrics(frame["gross_return"].to_numpy(), frame["position"].to_numpy(), zero, trades, periods),
+    )

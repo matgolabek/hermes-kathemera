@@ -1,38 +1,69 @@
-"""Financial and prediction metrics for backtesting."""
+"""Financial performance metrics for backtests."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
 
+import ccxt
 import numpy as np
+
+SECONDS_PER_YEAR = 365 * 24 * 3600  # crypto markets trade every day
 
 
 @dataclass(frozen=True)
 class BacktestMetrics:
-    """Container for key backtesting summary metrics."""
+    """Summary of a strategy's per-candle returns.
 
-    mse: float
-    directional_accuracy: float
-    cumulative_return: float
+    Attributes:
+        total_return: Compounded return over the whole period.
+        annual_return: Compounded return scaled to one year.
+        annual_volatility: Standard deviation of returns scaled to one year.
+        sharpe: Annualized mean return divided by volatility (risk-free rate 0).
+        max_drawdown: Largest fall from a previous equity peak (negative).
+        exposure: Share of candles with an open position.
+        trades: Number of position changes, including the final close.
+        hit_rate: Share of in-market candles with a positive return.
+        costs: Sum of fees and slippage, as a fraction of equity per candle.
+    """
+
+    total_return: float
+    annual_return: float
+    annual_volatility: float
+    sharpe: float
     max_drawdown: float
+    exposure: float
+    trades: int
+    hit_rate: float
+    costs: float
 
 
-def calculate_metrics(y_true: Sequence[float], y_pred: Sequence[float], strategy_returns: Sequence[float]) -> BacktestMetrics:
-    """Compute core prediction and trading metrics."""
-    true_arr = np.asarray(y_true)
-    pred_arr = np.asarray(y_pred)
-    ret_arr = np.asarray(strategy_returns)
+def periods_per_year(timeframe: str) -> float:
+    """Number of candles of ``timeframe`` (e.g. ``"1h"``) in a year of 24/7 trading."""
+    return SECONDS_PER_YEAR / ccxt.Exchange.parse_timeframe(timeframe)
 
-    mse = float(np.mean((true_arr - pred_arr) ** 2))
-    directional_accuracy = float(np.mean(np.sign(true_arr) == np.sign(pred_arr)))
-    equity_curve = np.cumprod(1.0 + ret_arr)
-    running_max = np.maximum.accumulate(equity_curve)
-    drawdown = (equity_curve - running_max) / running_max
+
+def calculate_metrics(
+    net_returns: np.ndarray, positions: np.ndarray, costs: np.ndarray, trades: int, periods: float
+) -> BacktestMetrics:
+    """Compute performance metrics from per-candle simple returns after costs."""
+    returns = np.asarray(net_returns, dtype=np.float64)
+    if returns.size == 0:
+        raise ValueError("Cannot compute metrics for an empty backtest")
+
+    equity = np.cumprod(1.0 + returns)
+    drawdown = equity / np.maximum.accumulate(np.maximum(equity, 1.0)) - 1.0
+    years = returns.size / periods
+    std = returns.std(ddof=1) if returns.size > 1 else 0.0
+    in_market = np.asarray(positions) != 0
 
     return BacktestMetrics(
-        mse=mse,
-        directional_accuracy=directional_accuracy,
-        cumulative_return=float(equity_curve[-1] - 1.0) if equity_curve.size > 0 else 0.0,
-        max_drawdown=float(np.min(drawdown)) if drawdown.size > 0 else 0.0,
+        total_return=float(equity[-1] - 1.0),
+        annual_return=float(equity[-1] ** (1.0 / years) - 1.0) if equity[-1] > 0 else -1.0,
+        annual_volatility=float(std * np.sqrt(periods)),
+        sharpe=float(returns.mean() / std * np.sqrt(periods)) if std > 0 else 0.0,
+        max_drawdown=float(drawdown.min()),
+        exposure=float(in_market.mean()),
+        trades=int(trades),
+        hit_rate=float((returns[in_market] > 0).mean()) if in_market.any() else 0.0,
+        costs=float(np.sum(costs)),
     )
