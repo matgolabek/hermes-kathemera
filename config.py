@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class BacktestConfig:
     min_confidence: float
     rule: str = "argmax"
     down_prob_threshold: float = 0.5
+    exit_share: Optional[float] = None
 
     @property
     def cost_per_trade(self) -> float:
@@ -138,6 +140,7 @@ def get_backtest_config() -> BacktestConfig:
         min_confidence=float(_get_env("MIN_CONFIDENCE", "0.0")),
         rule=_get_env("STRATEGY_RULE", "argmax"),
         down_prob_threshold=float(_get_env("DOWN_PROB_THRESHOLD", "0.5")),
+        exit_share=float(os.environ["EXIT_SHARE"]) if os.getenv("EXIT_SHARE") else None,
     )
 
 

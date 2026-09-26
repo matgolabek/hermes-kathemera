@@ -131,3 +131,14 @@ def test_prepare_walk_forward_fits_a_scaler_per_fold():
     assert folds[0].scaler.mean.iloc[0] != folds[2].scaler.mean.iloc[0]
     for data in folds:
         assert data.train.timestamps[-1] < data.val.timestamps[0] < data.test.timestamps[0]
+
+
+def test_sequence_set_tail_keeps_the_most_recent_windows():
+    data = prepare_datasets(make_raw_ohlcv(600), 16, 0.7, 0.15, timeframe="1h")
+
+    tail = data.train.tail(10)
+
+    assert len(tail) == 10
+    assert tail.timestamps[-1] == data.train.timestamps[-1]
+    np.testing.assert_array_equal(tail.X, data.train.X[-10:])
+    assert len(data.train.tail(10_000)) == len(data.train)

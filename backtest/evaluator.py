@@ -27,6 +27,7 @@ class BacktestResult:
     frame: pd.DataFrame
     metrics: BacktestMetrics
     gross_metrics: BacktestMetrics
+    down_prob_threshold: Optional[float] = None
 
 
 def positions_from_probs(
@@ -65,6 +66,20 @@ def positions_from_probs(
     positions[predicted == names.index("down")] = down_position
     positions[probs.max(axis=1) < min_confidence] = 0
     return positions
+
+
+def calibrate_down_threshold(probs: np.ndarray, class_names: Sequence[str], exit_share: float) -> float:
+    """P(down) threshold that is exceeded by the top ``exit_share`` of ``probs``.
+
+    Pass probabilities from data *before* the traded period; computing the threshold on
+    the traded period itself would use its future.
+    """
+    if not 0 < exit_share < 1:
+        raise ValueError("exit_share must be between 0 and 1")
+    if len(probs) == 0:
+        raise ValueError("Need calibration predictions to set the exit threshold")
+    p_down = probs[:, list(class_names).index("down")]
+    return float(np.quantile(p_down, 1.0 - exit_share))
 
 
 def simulate(

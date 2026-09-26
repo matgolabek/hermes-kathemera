@@ -5,6 +5,7 @@ Usage::
     python -m backtest.walk_forward                          # all models, 5 folds
     python -m backtest.walk_forward --models linear gru --folds 4
     python -m backtest.walk_forward --rule exit-on-down --down-threshold 0.4
+    python -m backtest.walk_forward --exit-share 0.1   # threshold calibrated on each fold's validation block
 
 The first ``--min-train`` share of the data is only used for training. The rest is
 cut into ``--folds`` consecutive periods. For each period, every model is trained
@@ -14,8 +15,8 @@ validation period can be lucky; a result that holds in most folds is more
 believable. The per-fold returns are also stitched into one out-of-sample equity
 curve per model.
 
-Results go to ``CHECKPOINT_DIR/walk_forward/``: fold checkpoints, ``walk_forward.json``
-and ``equity.csv``.
+Results go to ``CHECKPOINT_DIR/walk_forward/<label mode>_h<horizon>_<strategy>/``: fold
+checkpoints, ``walk_forward.json`` and ``equity.csv``.
 """
 
 from __future__ import annotations
@@ -32,7 +33,15 @@ import pandas as pd
 
 from backtest.evaluator import BacktestResult
 from backtest.metrics import calculate_metrics, periods_per_year
-from backtest.run import BUY_AND_HOLD, add_strategy_args, backtest_split, buy_and_hold, describe_rule, strategy_config
+from backtest.run import (
+    BUY_AND_HOLD,
+    add_strategy_args,
+    backtest_split,
+    buy_and_hold,
+    describe_rule,
+    run_tag,
+    strategy_config,
+)
 from config import BacktestConfig, ModelConfig, TrainingConfig, get_data_config, get_model_config, get_training_config
 from data_pipeline.loaders import CCXTLoader
 from data_pipeline.pipeline import PreparedData, prepare_walk_forward
@@ -68,9 +77,12 @@ def run_fold(
         logger.info("=== Fold %d: training %s", fold, name)
         result = train_and_evaluate(data, dataclasses.replace(model_cfg, model_name=name), fold_train_cfg, eval_test=True)
         model, _ = load_model(Path(result["checkpoint"]), train_cfg.device)
-        backtests[name] = backtest_split(model, data.test, data.class_names, backtest_cfg, periods, train_cfg.device)
+        backtests[name] = backtest_split(
+            model, data.test, data.class_names, backtest_cfg, periods, train_cfg.device, calibration=data.val
+        )
         summary["models"][name] = {
             "best_epoch": result["best_epoch"],
+            "down_prob_threshold": backtests[name].down_prob_threshold,
             "classification": result["test"],
             "backtest": dataclasses.asdict(backtests[name].metrics),
             "gross": dataclasses.asdict(backtests[name].gross_metrics),
@@ -115,16 +127,20 @@ def aggregate(folds: Sequence[dict[str, Any]], strategies: Sequence[str]) -> dic
 def format_report(folds: Sequence[dict[str, Any]], totals: dict[str, dict[str, Any]], backtest_cfg: BacktestConfig) -> str:
     """Render per-fold results and the stitched out-of-sample summary."""
     lines = [f"Walk-forward, after costs of {backtest_cfg.cost_per_trade:.2%} per trade ({describe_rule(backtest_cfg)})", ""]
-    header = f"{'fold':>4s}  {'evaluation period':23s} {'strategy':10s} {'skill':>7s} {'dir_ic':>7s} {'vol_ic':>7s} {'return':>8s} {'sharpe':>7s} {'max_dd':>7s} {'trades':>6s}"
+    header = (
+        f"{'fold':>4s}  {'evaluation period':23s} {'strategy':10s} {'skill':>7s} {'dir_ic':>7s} {'vol_ic':>7s} "
+        f"{'return':>8s} {'sharpe':>7s} {'max_dd':>7s} {'exposure':>8s} {'trades':>6s} {'exit_at':>7s}"
+    )
     lines += [header, "-" * len(header)]
     for f in folds:
         period = f"{f['eval_period'][0][:10]} - {f['eval_period'][1][:10]}"
         for name, m in f["models"].items():
             c, b = m.get("classification"), m["backtest"]
             cls = f"{c['skill']:>+7.2%} {c['direction_ic']:>+7.3f} {c['volatility_ic']:>+7.3f}" if c else f"{'':>7s} {'':>7s} {'':>7s}"
+            exit_at = f"{m['down_prob_threshold']:.3f}" if m.get("down_prob_threshold") is not None else "-"
             lines.append(
                 f"{f['fold']:>4d}  {period:23s} {name:10s} {cls} {b['total_return']:>+8.1%} {b['sharpe']:>7.2f} "
-                f"{b['max_drawdown']:>7.1%} {b['trades']:>6d}"
+                f"{b['max_drawdown']:>7.1%} {b['exposure']:>8.0%} {b['trades']:>6d} {exit_at:>7s}"
             )
             period = ""
         lines.append("")
@@ -157,7 +173,7 @@ def main(argv: Optional[Sequence[str]] = None) -> dict[str, Any]:
     data_cfg, model_cfg, train_cfg = get_data_config(), get_model_config(), get_training_config()
     backtest_cfg = strategy_config(args)
     periods = periods_per_year(data_cfg.timeframe)
-    out_dir = train_cfg.checkpoint_dir / "walk_forward"
+    out_dir = train_cfg.checkpoint_dir / "walk_forward" / f"{data_cfg.label_mode}_h{data_cfg.horizon}_{run_tag(backtest_cfg)}"
 
     raw = CCXTLoader(
         data_cfg.exchange, data_cfg.symbol, data_cfg.timeframe, since=data_cfg.since, cache_dir=data_cfg.cache_dir
