@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
+import pytest
 
 from data_pipeline.indicators import FEATURE_COLUMNS
 from data_pipeline.pipeline import prepare_datasets
@@ -63,3 +65,24 @@ def test_metadata_is_plain_and_complete():
     assert set(meta["scaler"]["mean"]) == set(FEATURE_COLUMNS)
     assert (meta["sequence_length"], meta["horizon"], meta["flat_threshold"]) == (16, 2, 0.001)
     assert meta["class_names"] == ["down", "flat", "up"]
+
+
+def test_next_returns_are_one_candle_returns():
+    raw = make_raw_ohlcv(600)
+    data = prepare_datasets(raw, 16, 0.7, 0.15, timeframe="1h", horizon=3)
+
+    close = pd.Series(raw["close"].to_numpy(), index=pd.to_datetime(raw["timestamp"], unit="ms", utc=True))
+    t = data.val.timestamps[5]
+    expected = np.log(close.shift(-1)[t] / close[t])
+    assert data.val.next_returns[5] == pytest.approx(expected, rel=1e-5)
+    # Consecutive windows sit on consecutive candles, so trades can be simulated in order.
+    assert (np.diff(data.val.timestamps) == pd.Timedelta("1h")).all()
+
+
+def test_prepare_datasets_reuses_given_scaler():
+    raw = make_raw_ohlcv(600)
+    first = prepare_datasets(raw, 16, 0.7, 0.15, timeframe="1h")
+
+    second = prepare_datasets(make_raw_ohlcv(600, seed=1), 16, 0.7, 0.15, timeframe="1h", scaler=first.scaler)
+
+    assert second.scaler is first.scaler

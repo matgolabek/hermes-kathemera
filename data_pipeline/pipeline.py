@@ -27,14 +27,17 @@ class SequenceSet:
         X: Feature windows, float32 ``(samples, sequence_length, features)``.
         y: Class index per window (``DOWN``/``FLAT``/``UP``), int64 ``(samples,)``;
             the format ``nn.CrossEntropyLoss`` expects.
-        returns: Forward log return behind each label, float32 ``(samples,)``; used
-            to measure trading results.
+        returns: Forward log return behind each label (over ``horizon`` candles),
+            float32 ``(samples,)``.
+        next_returns: Log return from each window's last close to the next close,
+            float32 ``(samples,)``; what a position held for one candle earns.
         timestamps: Time of each window's last candle.
     """
 
     X: np.ndarray
     y: np.ndarray
     returns: np.ndarray
+    next_returns: np.ndarray
     timestamps: pd.DatetimeIndex
 
     def __len__(self) -> int:
@@ -80,11 +83,15 @@ def prepare_datasets(
     horizon: int = 1,
     flat_threshold: float = 0.002,
     feature_columns: Sequence[str] = FEATURE_COLUMNS,
+    scaler: Optional[FeatureScaler] = None,
 ) -> PreparedData:
     """Clean candles, add features and labels, split by time, scale and window.
 
     Each window is labelled up/flat/down by the return over the next ``horizon``
     candles, with moves within ``±flat_threshold`` counted as flat.
+
+    Pass ``scaler`` (e.g. restored from a checkpoint) to reuse it instead of fitting a
+    new one on the training split.
 
     Leakage guards:
     - Data is split by time before scaling; the scaler only sees training rows.
@@ -98,14 +105,26 @@ def prepare_datasets(
     parts = split_chronological(df, train_split, val_split)
     # Targets are computed per split so none of them looks past the split's end.
     parts = [add_target(part, horizon, flat_threshold) for part in parts]
-    scaler = FeatureScaler.fit(parts[0], feature_columns)
+    if scaler is None:
+        scaler = FeatureScaler.fit(parts[0], feature_columns)
 
     sets = []
     for part in parts:
         X, targets, ends = make_supervised_sequences(
-            scaler.transform(part), sequence_length, feature_columns, target_columns=("label", "target")
+            scaler.transform(part),
+            sequence_length,
+            feature_columns,
+            target_columns=("label", "target", "next_return"),
         )
-        sets.append(SequenceSet(X=X, y=targets[:, 0].astype(np.int64), returns=targets[:, 1], timestamps=ends))
+        sets.append(
+            SequenceSet(
+                X=X,
+                y=targets[:, 0].astype(np.int64),
+                returns=targets[:, 1],
+                next_returns=targets[:, 2],
+                timestamps=ends,
+            )
+        )
 
     train, val, test = sets
     return PreparedData(
