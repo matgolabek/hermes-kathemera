@@ -59,7 +59,9 @@ df = CCXTLoader(cfg.exchange, cfg.symbol, cfg.timeframe, since=cfg.since, cache_
 
 1. `preprocess.clean_ohlcv` parses timestamps into a UTC index, sorts, removes duplicates and invalid candles, and fills missing candles with the previous close and zero volume (flagged in `is_filled`).
 2. `indicators.add_technical_indicators` adds the 16 `FEATURE_COLUMNS`: returns, candle shape, RSI, MACD, ATR, moving-average distance, Bollinger %B, volatility, relative volume and time-of-day/weekday. All are scale-free and use only past candles.
-3. `preprocess.split_chronological` splits by time (oldest data for training), and `preprocess.add_target` labels each candle up/flat/down by the log return over the next `TARGET_HORIZON` candles; moves within ±`FLAT_THRESHOLD` (default 0.2%, about a round-trip fee) count as flat. Labels are computed within each split.
+3. `preprocess.split_chronological` splits by time (oldest data for training), and `preprocess.add_target` labels each candle by the log return over the next `TARGET_HORIZON` candles. Labels are computed within each split.
+   - `LABEL_MODE=three_class` (default): up/flat/down; moves within ±`FLAT_THRESHOLD` count as flat.
+   - `LABEL_MODE=binary`: down (a drop below −`FLAT_THRESHOLD`) vs rest. This matches long-only trading, where the only question is whether to step aside. Keep the threshold above the round-trip cost (0.3% by default), or avoided drops will not pay for the exit.
 4. `preprocess.FeatureScaler` standardizes features using training-period statistics only.
 5. `preprocess.make_supervised_sequences` builds sliding windows: `X` has shape `(samples, SEQUENCE_LENGTH, 16)`, `y` holds class indices `(samples,)` for `nn.CrossEntropyLoss`, and `returns` keeps the underlying forward returns for evaluating trades.
 
@@ -97,6 +99,9 @@ The comparison table reports, on the validation split:
 - `log_loss`: cross-entropy, the quantity being optimized (lower is better).
 - `skill`: improvement in log loss over always predicting the training class frequencies. **At or below 0 means the model learned nothing usable**, which is the expected result for most setups on real price data.
 - `acc` / `bal_acc`: accuracy and balanced accuracy (mean per-class recall), plus how often each class is predicted. Compare accuracy with the printed majority-class accuracy, not with 33%.
+- `dir_ic`: rank correlation between how bullish the prediction is (P(up) − P(down), or −P(down) for binary labels) and the actual forward return. This is the directional information; values below the printed noise level are luck.
+- `vol_ic`: rank correlation between how strongly a move is expected (1 − P(flat), or P(down) for binary labels) and the size of the actual move. High `vol_ic` with `dir_ic` near 0 means the model knows *when* the price moves but not *which way*.
+- `dir_acc`: among up/down predictions, how often the return had that sign.
 
 Keep the test split for the final decision: every look at it makes it a less honest estimate.
 
@@ -111,7 +116,8 @@ python -m backtest.run --split test         # final check only
 
 Each model's checkpoint is loaded with its own preprocessing (features, scaler, horizon, threshold), and its predictions are traded candle by candle:
 
-- The most likely class sets the position: up → long, down → short (with `ALLOW_SHORT`) or out, flat → out. Predictions below `MIN_CONFIDENCE` stay out.
+- `STRATEGY_RULE=argmax` (default): the most likely class sets the position: up (or rest) → long, down → short (with `ALLOW_SHORT`) or out, flat → out. Predictions below `MIN_CONFIDENCE` stay out.
+- `STRATEGY_RULE=exit-on-down` (`--rule exit-on-down`): long by default, out (or short) whenever P(down) > `DOWN_PROB_THRESHOLD` (`--down-threshold`). Works with both label modes; pick the threshold on the validation split only.
 - A position is taken at a candle's close and held until the next close.
 - Every position change costs `FEE_RATE + SLIPPAGE` (default 0.1% + 0.05%) of the traded value; a long-to-short flip counts twice, and any open position is closed at the end.
 - Shorts ignore borrow and funding costs, so short results are optimistic.
@@ -119,6 +125,18 @@ Each model's checkpoint is loaded with its own preprocessing (features, scaler, 
 The table compares each model with buy-and-hold on the same candles: total and annualized return, Sharpe ratio, maximum drawdown, share of time in the market, number of trades, hit rate and total costs, plus the same return and Sharpe before costs. A model that is positive before costs and negative after has a signal too small to trade at that frequency. Equity curves and metrics are saved as `CHECKPOINT_DIR/backtest_<split>_equity.csv` and `backtest_<split>.json`.
 
 The backtest refuses to run if the chosen split overlaps the model's training period, which happens if the data (`SINCE`, the cache) changed after training; retrain in that case.
+
+## Walk-forward evaluation
+
+```bash
+python -m backtest.walk_forward                              # all models, 5 folds
+python -m backtest.walk_forward --models linear gru --folds 4
+python -m backtest.walk_forward --rule exit-on-down --down-threshold 0.4
+```
+
+One validation period can be lucky. Walk-forward keeps the first half of the data (`--min-train`) for training only and cuts the rest into `--folds` consecutive periods. For each period, every model is retrained from scratch on all earlier data (its last 10% for early stopping) and then scored and traded on that period, so every result is out-of-sample. The report shows each fold, and all folds stitched into one out-of-sample equity curve per model, with how many folds beat buy-and-hold. Output goes to `CHECKPOINT_DIR/walk_forward/`.
+
+Training runs once per model and fold, so this takes `folds` times longer than `python -m training.run`.
 
 ## Tests
 

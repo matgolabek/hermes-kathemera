@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
 
 from backtest.metrics import BacktestMetrics, calculate_metrics
 from config import BacktestConfig
-from data_pipeline.preprocess import DOWN, UP
+from data_pipeline.preprocess import CLASS_NAMES
+
+STRATEGY_RULES = ["argmax", "exit-on-down"]
 
 
 @dataclass
@@ -27,18 +29,40 @@ class BacktestResult:
     gross_metrics: BacktestMetrics
 
 
-def positions_from_probs(probs: np.ndarray, allow_short: bool = False, min_confidence: float = 0.0) -> np.ndarray:
-    """Map class probabilities to positions.
+def positions_from_probs(
+    probs: np.ndarray,
+    allow_short: bool = False,
+    min_confidence: float = 0.0,
+    class_names: Sequence[str] = CLASS_NAMES,
+    rule: str = "argmax",
+    down_prob_threshold: float = 0.5,
+) -> np.ndarray:
+    """Map class probabilities to positions (1 long, 0 out, -1 short).
 
-    The most likely class decides: up → long (1), down → short (-1) if shorting is
-    allowed, otherwise out (0), flat → out. Predictions whose probability is below
-    ``min_confidence`` are treated as out.
+    Rules:
+    - ``"argmax"``: the most likely class decides. up or rest → long, down → short if
+      shorting is allowed, otherwise out, flat → out. Predictions whose probability is
+      below ``min_confidence`` are treated as out.
+    - ``"exit-on-down"``: long by default; out (or short, if allowed) whenever
+      P(down) > ``down_prob_threshold``. ``min_confidence`` is not used.
     """
+    names = list(class_names)
+    p_down = probs[:, names.index("down")]
+    down_position = -1 if allow_short else 0
+
+    if rule == "exit-on-down":
+        positions = np.ones(len(probs), dtype=np.int8)
+        positions[p_down > down_prob_threshold] = down_position
+        return positions
+    if rule != "argmax":
+        raise ValueError(f"Unknown strategy rule {rule!r}; expected one of {STRATEGY_RULES}")
+
     predicted = probs.argmax(axis=1)
     positions = np.zeros(len(probs), dtype=np.int8)
-    positions[predicted == UP] = 1
-    if allow_short:
-        positions[predicted == DOWN] = -1
+    for name in ("up", "rest"):
+        if name in names:
+            positions[predicted == names.index(name)] = 1
+    positions[predicted == names.index("down")] = down_position
     positions[probs.max(axis=1) < min_confidence] = 0
     return positions
 

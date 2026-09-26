@@ -9,6 +9,7 @@ import pytest
 from data_pipeline.preprocess import (
     DOWN,
     FLAT,
+    REST,
     UP,
     FeatureScaler,
     add_target,
@@ -169,3 +170,17 @@ def test_sequences_reject_nan_features():
 
     with pytest.raises(ValueError, match="NaN"):
         make_supervised_sequences(df, 2, ["f"])
+
+
+def test_add_target_binary_labels_down_vs_rest():
+    index = pd.date_range("2024-01-01", periods=5, freq="h", tz="UTC")
+    close = [100.0, 101.0, 101.1, 100.0, 100.0]  # +1%, +0.1%, -1.1%, 0%
+    df = add_target(pd.DataFrame({"close": close}, index=index), flat_threshold=0.002, label_mode="binary")
+
+    assert df["label"].iloc[:4].tolist() == [REST, REST, DOWN, REST]
+
+
+def test_unknown_label_mode_rejected():
+    index = pd.date_range("2024-01-01", periods=3, freq="h", tz="UTC")
+    with pytest.raises(ValueError, match="label mode"):
+        add_target(pd.DataFrame({"close": [1.0, 2.0, 3.0]}, index=index), label_mode="five_class")

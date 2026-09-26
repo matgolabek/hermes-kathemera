@@ -38,6 +38,26 @@ def test_positions_with_shorts_and_confidence_filter():
     assert positions_from_probs(PROBS, allow_short=True, min_confidence=0.5).tolist() == [1, -1, 0, 0]
 
 
+def test_exit_on_down_stays_long_unless_down_is_likely():
+    assert positions_from_probs(PROBS, rule="exit-on-down", down_prob_threshold=0.5).tolist() == [1, 0, 1, 1]
+    assert positions_from_probs(PROBS, rule="exit-on-down", down_prob_threshold=0.25).tolist() == [1, 0, 1, 0]
+    shorts = positions_from_probs(PROBS, rule="exit-on-down", down_prob_threshold=0.5, allow_short=True)
+    assert shorts.tolist() == [1, -1, 1, 1]
+
+
+def test_binary_probabilities():
+    probs = np.array([[0.7, 0.3], [0.2, 0.8], [0.45, 0.55]])  # down, rest
+
+    assert positions_from_probs(probs, class_names=["down", "rest"]).tolist() == [0, 1, 1]
+    exits = positions_from_probs(probs, class_names=["down", "rest"], rule="exit-on-down", down_prob_threshold=0.4)
+    assert exits.tolist() == [0, 1, 0]
+
+
+def test_unknown_rule_rejected():
+    with pytest.raises(ValueError, match="rule"):
+        positions_from_probs(PROBS, rule="hodl")
+
+
 def test_simulate_charges_costs_on_every_position_change():
     positions = np.array([1, 1, 0, -1, 1])
     log_returns = np.log([1.01, 1.02, 1.03, 0.98, 1.00])
@@ -94,8 +114,9 @@ def test_periods_per_year():
     assert periods_per_year("1d") == 365
 
 
-def train_small(tmp_path, monkeypatch, raw):
+def train_small(tmp_path, monkeypatch, raw, label_mode="three_class"):
     monkeypatch.setattr(training_run.CCXTLoader, "load", lambda self: raw)
+    monkeypatch.setenv("LABEL_MODE", label_mode)
     monkeypatch.setenv("CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("EPOCHS", "1")
     monkeypatch.setenv("SEQUENCE_LENGTH", "16")
@@ -134,3 +155,39 @@ def test_cli_without_checkpoints_exits(tmp_path, monkeypatch):
 
     with pytest.raises(SystemExit):
         backtest_run.main([])
+
+
+def test_cli_exit_on_down_with_binary_model(tmp_path, monkeypatch, capsys):
+    raw = make_raw_ohlcv(1500)
+    train_small(tmp_path, monkeypatch, raw, label_mode="binary")
+    monkeypatch.setattr(backtest_run.CCXTLoader, "load", lambda self: raw)
+
+    results = backtest_run.main(["--rule", "exit-on-down", "--down-threshold", "0.0"])
+
+    assert "exit-on-down" in capsys.readouterr().out
+    # Threshold 0 exits whenever P(down) > 0, i.e. always: never in the market.
+    assert results["linear"].metrics.exposure == 0.0
+    summary = json.loads((tmp_path / "backtest_val.json").read_text())
+    assert summary["config"]["rule"] == "exit-on-down"
+
+
+def test_walk_forward_cli(tmp_path, monkeypatch, capsys):
+    import backtest.walk_forward as walk_forward
+
+    monkeypatch.setattr(walk_forward.CCXTLoader, "load", lambda self: make_raw_ohlcv(2500))
+    monkeypatch.setenv("CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv("EPOCHS", "1")
+    monkeypatch.setenv("SEQUENCE_LENGTH", "16")
+
+    report = walk_forward.main(["--models", "linear", "--folds", "3", "--rule", "exit-on-down"])
+
+    out = capsys.readouterr().out
+    assert "stitched" in out
+    assert [f["fold"] for f in report["folds"]] == [1, 2, 3]
+    assert set(report["totals"]) == {"buy&hold", "linear"}
+    assert 0 <= report["totals"]["linear"]["folds_beating_buy_and_hold"] <= 3
+    periods = [f["eval_period"] for f in report["folds"]]
+    assert all(a[1] < b[0] for a, b in zip(periods, periods[1:]))
+    equity = pd.read_csv(tmp_path / "walk_forward" / "equity.csv", index_col=0)
+    assert list(equity.columns) == ["buy&hold", "linear"]
+    assert (tmp_path / "walk_forward" / "fold_3" / "linear.pt").exists()
