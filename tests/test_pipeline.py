@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from data_pipeline.indicators import FEATURE_COLUMNS
-from data_pipeline.pipeline import prepare_datasets
+from data_pipeline.pipeline import build_features, prepare_datasets, prepare_walk_forward, walk_forward_parts
 from data_pipeline.preprocess import DOWN, FLAT, UP
 from tests.conftest import make_raw_ohlcv
 
@@ -86,3 +86,48 @@ def test_prepare_datasets_reuses_given_scaler():
     second = prepare_datasets(make_raw_ohlcv(600, seed=1), 16, 0.7, 0.15, timeframe="1h", scaler=first.scaler)
 
     assert second.scaler is first.scaler
+
+
+def test_binary_label_mode():
+    data = prepare_datasets(make_raw_ohlcv(800), 16, 0.7, 0.15, timeframe="1h", flat_threshold=0.005, label_mode="binary")
+
+    assert data.class_names == ["down", "rest"]
+    assert data.metadata()["label_mode"] == "binary"
+    assert data.metadata()["class_names"] == ["down", "rest"]
+    assert set(data.train.class_counts()) == {"down", "rest"}
+    assert (data.train.y[data.train.returns < -0.005] == DOWN).all()
+    assert (data.train.y[data.train.returns >= -0.005] == 1).all()
+
+
+def test_walk_forward_parts_are_ordered_and_expanding():
+    df = build_features(make_raw_ohlcv(1000), "1h")
+
+    folds = walk_forward_parts(df, n_folds=4, min_train_fraction=0.5, val_fraction=0.2)
+
+    assert len(folds) == 4
+    eval_rows = sum(len(ev) for _, _, ev in folds)
+    assert eval_rows == len(df) - int(len(df) * 0.5)
+    for k, (train, val, ev) in enumerate(folds):
+        assert train.index[-1] < val.index[0] and val.index[-1] < ev.index[0]
+        assert train.index[0] == df.index[0]  # expanding window: always starts at the beginning
+        if k:
+            previous_eval = folds[k - 1][2]
+            assert previous_eval.index[-1] < ev.index[0]
+            assert len(train) > len(folds[k - 1][0])
+
+
+def test_walk_forward_rejects_bad_settings():
+    df = build_features(make_raw_ohlcv(300), "1h")
+    with pytest.raises(ValueError):
+        walk_forward_parts(df, n_folds=0, min_train_fraction=0.5, val_fraction=0.1)
+    with pytest.raises(ValueError):
+        walk_forward_parts(df, n_folds=2, min_train_fraction=1.0, val_fraction=0.1)
+
+
+def test_prepare_walk_forward_fits_a_scaler_per_fold():
+    folds = prepare_walk_forward(make_raw_ohlcv(1500), n_folds=3, sequence_length=16, timeframe="1h")
+
+    assert len(folds) == 3
+    assert folds[0].scaler.mean.iloc[0] != folds[2].scaler.mean.iloc[0]
+    for data in folds:
+        assert data.train.timestamps[-1] < data.val.timestamps[0] < data.test.timestamps[0]

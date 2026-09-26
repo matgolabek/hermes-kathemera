@@ -16,9 +16,22 @@ logger = logging.getLogger(__name__)
 PRICE_COLUMNS = ["open", "high", "low", "close"]
 OHLCV_COLUMNS = [*PRICE_COLUMNS, "volume"]
 
-# Class indices of the up/flat/down label, as used by the classification models.
-CLASS_NAMES = ["down", "flat", "up"]
+# Class names per label mode, in class-index order. "down" is class 0 in every mode, so
+# column 0 of a model's probabilities is always P(down).
+LABEL_MODES = {
+    "three_class": ["down", "flat", "up"],
+    "binary": ["down", "rest"],  # rest = flat or up: anything that is not a drop
+}
+CLASS_NAMES = LABEL_MODES["three_class"]
 DOWN, FLAT, UP = range(len(CLASS_NAMES))
+REST = 1
+
+
+def class_names_for(label_mode: str) -> list[str]:
+    """Class names of a label mode (``"three_class"`` or ``"binary"``)."""
+    if label_mode not in LABEL_MODES:
+        raise ValueError(f"Unknown label mode {label_mode!r}; expected one of {sorted(LABEL_MODES)}")
+    return list(LABEL_MODES[label_mode])
 
 
 def clean_ohlcv(df: pd.DataFrame, timeframe: Optional[str] = None) -> pd.DataFrame:
@@ -88,22 +101,29 @@ def _infer_freq(index: pd.DatetimeIndex) -> pd.Timedelta:
     return pd.Series(index).diff().dropna().mode().iloc[0]
 
 
-def add_target(df: pd.DataFrame, horizon: int = 1, flat_threshold: float = 0.0) -> pd.DataFrame:
-    """Add the forward return and its up/flat/down class.
+def add_target(
+    df: pd.DataFrame, horizon: int = 1, flat_threshold: float = 0.0, label_mode: str = "three_class"
+) -> pd.DataFrame:
+    """Add the forward return and its class.
 
     - ``target``: log return from this candle's close to the close ``horizon`` candles later.
     - ``next_return``: log return to the next candle's close, which is what a position
       held for one candle earns (equal to ``target`` when ``horizon`` is 1).
     - ``label``: ``UP`` if ``target > flat_threshold``, ``DOWN`` if ``target < -flat_threshold``,
       otherwise ``FLAT``. Set the threshold to about the round-trip trading cost, so
-      ``FLAT`` means "a move too small to trade profitably".
+      ``FLAT`` means "a move too small to trade profitably". With ``label_mode="binary"``
+      the label is ``DOWN`` if ``target < -flat_threshold``, otherwise ``REST``.
 
     The last ``horizon`` rows have no future close and get NaN in ``target`` and ``label``.
     """
     df = df.copy()
     target = np.log(df["close"].shift(-horizon) / df["close"])
-    label = pd.Series(float(FLAT), index=df.index)
-    label[target > flat_threshold] = UP
+    class_names_for(label_mode)  # validate
+    if label_mode == "binary":
+        label = pd.Series(float(REST), index=df.index)
+    else:
+        label = pd.Series(float(FLAT), index=df.index)
+        label[target > flat_threshold] = UP
     label[target < -flat_threshold] = DOWN
     df["target"] = target
     df["next_return"] = np.log(df["close"].shift(-1) / df["close"])

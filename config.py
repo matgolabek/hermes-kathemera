@@ -21,6 +21,7 @@ class DataConfig:
     val_split: float
     horizon: int
     flat_threshold: float
+    label_mode: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ class BacktestConfig:
     slippage: float
     allow_short: bool
     min_confidence: float
+    rule: str = "argmax"
+    down_prob_threshold: float = 0.5
 
     @property
     def cost_per_trade(self) -> float:
@@ -94,6 +97,7 @@ def get_data_config() -> DataConfig:
         val_split=float(_get_env("VAL_SPLIT", "0.1")),
         horizon=int(_get_env("TARGET_HORIZON", "1")),
         flat_threshold=float(_get_env("FLAT_THRESHOLD", "0.002")),
+        label_mode=_get_env("LABEL_MODE", "three_class"),
     )
 
 
@@ -132,6 +136,8 @@ def get_backtest_config() -> BacktestConfig:
         slippage=float(_get_env("SLIPPAGE", "0.0005")),
         allow_short=_get_env("ALLOW_SHORT", "false").lower() in {"1", "true", "yes"},
         min_confidence=float(_get_env("MIN_CONFIDENCE", "0.0")),
+        rule=_get_env("STRATEGY_RULE", "argmax"),
+        down_prob_threshold=float(_get_env("DOWN_PROB_THRESHOLD", "0.5")),
     )
 
 

@@ -7,7 +7,7 @@ import logging
 from config import get_data_config, get_execution_config, get_model_config, get_training_config
 from data_pipeline.loaders import CCXTLoader
 from data_pipeline.pipeline import prepare_datasets
-from data_pipeline.preprocess import CLASS_NAMES
+from data_pipeline.preprocess import class_names_for
 from models import build_model
 
 
@@ -36,12 +36,14 @@ def main() -> None:
         timeframe=data_cfg.timeframe,
         horizon=data_cfg.horizon,
         flat_threshold=data_cfg.flat_threshold,
+        label_mode=data_cfg.label_mode,
     )
 
     if len(data.feature_columns) != model_cfg.input_size:
         raise ValueError(f"INPUT_SIZE={model_cfg.input_size} but the pipeline produces {len(data.feature_columns)} features")
-    if model_cfg.output_size != len(CLASS_NAMES):
-        raise ValueError(f"OUTPUT_SIZE={model_cfg.output_size} but there are {len(CLASS_NAMES)} classes {CLASS_NAMES}")
+    class_names = class_names_for(data_cfg.label_mode)
+    if model_cfg.output_size != len(class_names):
+        raise ValueError(f"OUTPUT_SIZE={model_cfg.output_size} but there are {len(class_names)} classes {class_names}")
 
     print("Datasets:")
     for name, split in (("train", data.train), ("val", data.val), ("test", data.test)):

@@ -27,7 +27,6 @@ from torch.utils.data import DataLoader
 from config import ModelConfig, TrainingConfig, get_data_config, get_model_config, get_training_config
 from data_pipeline.loaders import CCXTLoader
 from data_pipeline.pipeline import PreparedData, SequenceSet, prepare_datasets
-from data_pipeline.preprocess import CLASS_NAMES
 from models import MODEL_NAMES, build_model
 from training.checkpoint import load_model
 from training.dataset import TimeSeriesDataset
@@ -78,7 +77,7 @@ def train_and_evaluate(
     )
 
     best_model, _ = load_model(checkpoint_path, train_cfg.device)
-    prior = class_prior(data.train.y, len(CLASS_NAMES))
+    prior = class_prior(data.train.y, len(data.class_names))
     splits = [("val", data.val)] + ([("test", data.test)] if eval_test else [])
     result: dict[str, Any] = {
         "model": model_cfg.model_name,
@@ -86,33 +85,41 @@ def train_and_evaluate(
         "best_epoch": history.best_epoch,
         "epochs_run": len(history.val),
         "checkpoint": str(checkpoint_path),
+        "class_names": data.class_names,
     }
     for name, split in splits:
         if len(split) == 0:
             logger.warning("The %s split is empty; skipping its metrics", name)
             continue
         probs, labels = predict_proba(best_model, make_loader(split, train_cfg.batch_size, shuffle=False), train_cfg.device)
-        result[name] = classification_metrics(probs, labels, prior, CLASS_NAMES)
+        result[name] = classification_metrics(probs, labels, prior, data.class_names, split.returns)
     return result
 
 
 def format_results(results: Sequence[dict[str, Any]], split: str) -> str:
     """Render one split's metrics as a comparison table."""
-    header = f"{'model':10s} {'params':>9s} {'epoch':>5s} {'log_loss':>9s} {'skill':>8s} {'acc':>6s} {'bal_acc':>7s}  predicted down/flat/up"
+    names = next((r["class_names"] for r in results if split in r), [])
+    header = (
+        f"{'model':10s} {'params':>9s} {'epoch':>5s} {'log_loss':>9s} {'skill':>8s} {'acc':>6s} {'bal_acc':>7s} "
+        f"{'dir_ic':>7s} {'vol_ic':>7s} {'dir_acc':>7s}  predicted {'/'.join(names)}"
+    )
     lines = [f"[{split}] baseline: always predicting training class frequencies (skill 0)", header, "-" * len(header)]
     for r in results:
         m = r.get(split)
         if m is None:
             continue
-        shares = "/".join(f"{m[f'pred_{c}']:.0%}" for c in CLASS_NAMES)
+        shares = "/".join(f"{m[f'pred_{c}']:.0%}" for c in r["class_names"])
+        dir_acc = f"{m['direction_accuracy']:.3f}" if m.get("direction_accuracy") is not None else "-"
         lines.append(
             f"{r['model']:10s} {r['parameters']:>9,d} {r['best_epoch']:>5d} {m['log_loss']:>9.4f} "
-            f"{m['skill']:>+8.2%} {m['accuracy']:>6.3f} {m['balanced_accuracy']:>7.3f}  {shares}"
+            f"{m['skill']:>+8.2%} {m['accuracy']:>6.3f} {m['balanced_accuracy']:>7.3f} "
+            f"{m['direction_ic']:>+7.3f} {m['volatility_ic']:>+7.3f} {dir_acc:>7s}  {shares}"
         )
     first = next((r[split] for r in results if split in r), None)
     if first is not None:
         lines.append(
-            f"(prior log_loss {first['prior_log_loss']:.4f}; majority-class accuracy {first['majority_accuracy']:.3f})"
+            f"(prior log_loss {first['prior_log_loss']:.4f}; majority-class accuracy {first['majority_accuracy']:.3f}; "
+            f"|ic| below {first['ic_noise']:.3f} is likely noise)"
         )
     return "\n".join(lines)
 
@@ -138,8 +145,9 @@ def main(argv: Optional[Sequence[str]] = None) -> list[dict[str, Any]]:
         timeframe=data_cfg.timeframe,
         horizon=data_cfg.horizon,
         flat_threshold=data_cfg.flat_threshold,
+        label_mode=data_cfg.label_mode,
     )
-    model_cfg = dataclasses.replace(model_cfg, input_size=len(data.feature_columns), output_size=len(CLASS_NAMES))
+    model_cfg = dataclasses.replace(model_cfg, input_size=len(data.feature_columns), output_size=len(data.class_names))
     logger.info("Samples: train=%d val=%d test=%d", len(data.train), len(data.val), len(data.test))
     logger.info("Train classes: %s | val classes: %s", data.train.class_counts(), data.val.class_counts())
 
