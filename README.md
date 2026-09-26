@@ -82,6 +82,24 @@ Checkpoints store, next to the weights, the model config and the preprocessing s
 
 The first download of hourly data since 2020 takes around 60 requests. Some exchanges (e.g. Kraken) only serve recent candles through this API, so deep history is best fetched from exchanges like Binance.
 
+## Training
+
+```bash
+python -m training.run                    # train and compare every model
+python -m training.run --models lstm gru  # a subset
+python -m training.run --eval-test        # also score the held-out test split
+```
+
+Every model gets the same data, seed and settings: AdamW (`LEARNING_RATE`, `WEIGHT_DECAY`), gradient clipping (`GRAD_CLIP`), and early stopping once validation loss has not improved for `PATIENCE` epochs. The best epoch is saved to `CHECKPOINT_DIR/<model>.pt` and all metrics to `CHECKPOINT_DIR/results.json`.
+
+The comparison table reports, on the validation split:
+
+- `log_loss`: cross-entropy, the quantity being optimized (lower is better).
+- `skill`: improvement in log loss over always predicting the training class frequencies. **At or below 0 means the model learned nothing usable**, which is the expected result for most setups on real price data.
+- `acc` / `bal_acc`: accuracy and balanced accuracy (mean per-class recall), plus how often each class is predicted. Compare accuracy with the printed majority-class accuracy, not with 33%.
+
+Keep the test split for the final decision: every look at it makes it a less honest estimate.
+
 ## Tests
 
 ```bash
