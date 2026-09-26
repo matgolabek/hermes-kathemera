@@ -11,7 +11,7 @@ import pytest
 
 import backtest.run as backtest_run
 import training.run as training_run
-from backtest.evaluator import positions_from_probs, run_backtest, simulate
+from backtest.evaluator import calibrate_down_threshold, positions_from_probs, run_backtest, simulate
 from backtest.metrics import calculate_metrics, periods_per_year
 from config import BacktestConfig
 from tests.conftest import make_raw_ohlcv
@@ -56,6 +56,34 @@ def test_binary_probabilities():
 def test_unknown_rule_rejected():
     with pytest.raises(ValueError, match="rule"):
         positions_from_probs(PROBS, rule="hodl")
+
+
+def test_calibrated_threshold_exits_for_the_requested_share():
+    rng = np.random.default_rng(0)
+    p_down = rng.uniform(0.0, 0.3, 10_000)
+    probs = np.column_stack([p_down, 1 - p_down])
+
+    threshold = calibrate_down_threshold(probs, ["down", "rest"], exit_share=0.1)
+    positions = positions_from_probs(probs, class_names=["down", "rest"], rule="exit-on-down", down_prob_threshold=threshold)
+
+    assert threshold == pytest.approx(0.27, abs=0.01)
+    assert (positions == 0).mean() == pytest.approx(0.1, abs=0.002)
+
+
+def test_calibration_rejects_bad_input():
+    probs = np.array([[0.2, 0.8]])
+    with pytest.raises(ValueError):
+        calibrate_down_threshold(probs, ["down", "rest"], exit_share=1.5)
+    with pytest.raises(ValueError):
+        calibrate_down_threshold(np.empty((0, 2)), ["down", "rest"], exit_share=0.1)
+
+
+def test_run_tag_names_strategy_settings():
+    base = dataclasses.replace(NO_COSTS, rule="argmax")
+    assert backtest_run.run_tag(base) == "argmax"
+    assert backtest_run.run_tag(dataclasses.replace(base, min_confidence=0.5, allow_short=True)) == "argmax_conf0.5_short"
+    assert backtest_run.run_tag(dataclasses.replace(base, rule="exit-on-down", down_prob_threshold=0.4)) == "exit_p0.4"
+    assert backtest_run.run_tag(dataclasses.replace(base, exit_share=0.1)) == "exit_top10pct"
 
 
 def test_simulate_charges_costs_on_every_position_change():
@@ -133,9 +161,9 @@ def test_cli_backtests_trained_models(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "buy&hold" in out and "long/short" in out
     assert list(results) == ["buy&hold", "linear"]
-    summary = json.loads((tmp_path / "backtest_val.json").read_text())
+    summary = json.loads((tmp_path / "backtest_val_argmax_short.json").read_text())
     assert summary["config"]["allow_short"] is True
-    equity = pd.read_csv(tmp_path / "backtest_val_equity.csv", index_col=0)
+    equity = pd.read_csv(tmp_path / "backtest_val_argmax_short_equity.csv", index_col=0)
     assert list(equity.columns) == ["buy&hold", "linear"]
     assert len(equity) == len(results["linear"].frame)
 
@@ -167,8 +195,9 @@ def test_cli_exit_on_down_with_binary_model(tmp_path, monkeypatch, capsys):
     assert "exit-on-down" in capsys.readouterr().out
     # Threshold 0 exits whenever P(down) > 0, i.e. always: never in the market.
     assert results["linear"].metrics.exposure == 0.0
-    summary = json.loads((tmp_path / "backtest_val.json").read_text())
+    summary = json.loads((tmp_path / "backtest_val_exit_p0.json").read_text())
     assert summary["config"]["rule"] == "exit-on-down"
+    assert summary["results"]["linear"]["down_prob_threshold"] == 0.0
 
 
 def test_walk_forward_cli(tmp_path, monkeypatch, capsys):
@@ -188,6 +217,64 @@ def test_walk_forward_cli(tmp_path, monkeypatch, capsys):
     assert 0 <= report["totals"]["linear"]["folds_beating_buy_and_hold"] <= 3
     periods = [f["eval_period"] for f in report["folds"]]
     assert all(a[1] < b[0] for a, b in zip(periods, periods[1:]))
-    equity = pd.read_csv(tmp_path / "walk_forward" / "equity.csv", index_col=0)
+    out_dir = tmp_path / "walk_forward" / "three_class_h1_exit_p0.5"
+    equity = pd.read_csv(out_dir / "equity.csv", index_col=0)
     assert list(equity.columns) == ["buy&hold", "linear"]
-    assert (tmp_path / "walk_forward" / "fold_3" / "linear.pt").exists()
+    assert (out_dir / "fold_3" / "linear.pt").exists()
+
+
+def test_cli_exit_share_calibrates_before_the_traded_period(tmp_path, monkeypatch, capsys):
+    raw = make_raw_ohlcv(3000)
+    train_small(tmp_path, monkeypatch, raw, label_mode="binary")
+    monkeypatch.setattr(backtest_run.CCXTLoader, "load", lambda self: raw)
+    calibrations = []
+    original = backtest_run.calibrate_down_threshold
+
+    def spy(probs, class_names, exit_share):
+        calibrations.append(len(probs))
+        return original(probs, class_names, exit_share)
+
+    monkeypatch.setattr(backtest_run, "calibrate_down_threshold", spy)
+
+    results = backtest_run.main(["--exit-share", "0.2"])
+
+    assert "top 20%" in capsys.readouterr().out
+    linear = results["linear"]
+    assert linear.down_prob_threshold is not None
+    # Calibrated on as many pre-validation windows as the validation split has.
+    assert calibrations == [len(linear.frame)]
+    # Roughly the requested share is spent out of the market (the distribution can drift).
+    assert 0.5 < linear.metrics.exposure < 0.97
+    summary = json.loads((tmp_path / "backtest_val_exit_top20pct.json").read_text())
+    assert summary["config"]["exit_share"] == 0.2
+    assert summary["config"]["rule"] == "exit-on-down"
+
+
+def test_calibration_split_precedes_the_traded_split():
+    from data_pipeline.pipeline import prepare_datasets
+
+    data = prepare_datasets(make_raw_ohlcv(1500), 16, 0.7, 0.15, timeframe="1h")
+
+    before_val = backtest_run.calibration_split(data, "val")
+    before_test = backtest_run.calibration_split(data, "test")
+
+    assert len(before_val) == len(data.val)
+    assert before_val.timestamps[-1] == data.train.timestamps[-1]
+    assert before_test is data.val
+
+
+def test_walk_forward_exit_share_calibrates_each_fold(tmp_path, monkeypatch):
+    import backtest.walk_forward as walk_forward
+
+    monkeypatch.setattr(walk_forward.CCXTLoader, "load", lambda self: make_raw_ohlcv(2500))
+    monkeypatch.setenv("CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv("EPOCHS", "1")
+    monkeypatch.setenv("SEQUENCE_LENGTH", "16")
+    monkeypatch.setenv("LABEL_MODE", "binary")
+
+    report = walk_forward.main(["--models", "linear", "--folds", "2", "--exit-share", "0.1"])
+
+    thresholds = [f["models"]["linear"]["down_prob_threshold"] for f in report["folds"]]
+    assert all(t is not None for t in thresholds)
+    assert report["config"]["exit_share"] == 0.1
+    assert (tmp_path / "walk_forward" / "binary_h1_exit_top10pct" / "walk_forward.json").exists()

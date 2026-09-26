@@ -46,6 +46,18 @@ class SequenceSet:
     def __len__(self) -> int:
         return len(self.X)
 
+    def tail(self, n: int) -> "SequenceSet":
+        """The last ``n`` samples (the most recent windows)."""
+        start = max(len(self) - n, 0)
+        return SequenceSet(
+            X=self.X[start:],
+            y=self.y[start:],
+            returns=self.returns[start:],
+            next_returns=self.next_returns[start:],
+            timestamps=self.timestamps[start:],
+            class_names=list(self.class_names),
+        )
+
     def class_counts(self) -> dict[str, int]:
         """Number of samples per class name."""
         counts = np.bincount(self.y, minlength=len(self.class_names))

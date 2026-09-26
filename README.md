@@ -118,9 +118,12 @@ Each model's checkpoint is loaded with its own preprocessing (features, scaler, 
 
 - `STRATEGY_RULE=argmax` (default): the most likely class sets the position: up (or rest) → long, down → short (with `ALLOW_SHORT`) or out, flat → out. Predictions below `MIN_CONFIDENCE` stay out.
 - `STRATEGY_RULE=exit-on-down` (`--rule exit-on-down`): long by default, out (or short) whenever P(down) > `DOWN_PROB_THRESHOLD` (`--down-threshold`). Works with both label modes; pick the threshold on the validation split only.
+- `EXIT_SHARE` (`--exit-share 0.1`): exit-on-down with a threshold set so that the top 10% of P(down) values lead to an exit. A fixed threshold rarely fires when "down" is a rare class; this one adapts to each model. The threshold is calibrated on the model's predictions for the data just before the traded period (the last training windows for `val`, the validation split for `test`, each fold's validation block in walk-forward), so it never uses the traded period itself. The `exit_at` column shows the threshold used.
 - A position is taken at a candle's close and held until the next close.
 - Every position change costs `FEE_RATE + SLIPPAGE` (default 0.1% + 0.05%) of the traded value; a long-to-short flip counts twice, and any open position is closed at the end.
 - Shorts ignore borrow and funding costs, so short results are optimistic.
+
+Results are saved per strategy setting (for example `backtest_val_exit_top10pct.json`), so runs with different settings do not overwrite each other.
 
 The table compares each model with buy-and-hold on the same candles: total and annualized return, Sharpe ratio, maximum drawdown, share of time in the market, number of trades, hit rate and total costs, plus the same return and Sharpe before costs. A model that is positive before costs and negative after has a signal too small to trade at that frequency. Equity curves and metrics are saved as `CHECKPOINT_DIR/backtest_<split>_equity.csv` and `backtest_<split>.json`.
 
@@ -132,9 +135,12 @@ The backtest refuses to run if the chosen split overlaps the model's training pe
 python -m backtest.walk_forward                              # all models, 5 folds
 python -m backtest.walk_forward --models linear gru --folds 4
 python -m backtest.walk_forward --rule exit-on-down --down-threshold 0.4
+python -m backtest.walk_forward --exit-share 0.1
 ```
 
-One validation period can be lucky. Walk-forward keeps the first half of the data (`--min-train`) for training only and cuts the rest into `--folds` consecutive periods. For each period, every model is retrained from scratch on all earlier data (its last 10% for early stopping) and then scored and traded on that period, so every result is out-of-sample. The report shows each fold, and all folds stitched into one out-of-sample equity curve per model, with how many folds beat buy-and-hold. Output goes to `CHECKPOINT_DIR/walk_forward/`.
+Output goes to `CHECKPOINT_DIR/walk_forward/<label mode>_h<horizon>_<strategy>/`.
+
+One validation period can be lucky. Walk-forward keeps the first half of the data (`--min-train`) for training only and cuts the rest into `--folds` consecutive periods. For each period, every model is retrained from scratch on all earlier data (its last 10% for early stopping) and then scored and traded on that period, so every result is out-of-sample. The report shows each fold, and all folds stitched into one out-of-sample equity curve per model, with how many folds beat buy-and-hold.
 
 Training runs once per model and fold, so this takes `folds` times longer than `python -m training.run`.
 
