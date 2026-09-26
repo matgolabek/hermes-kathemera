@@ -11,7 +11,7 @@ import pytest
 
 import backtest.run as backtest_run
 import training.run as training_run
-from backtest.evaluator import calibrate_down_threshold, positions_from_probs, run_backtest, simulate
+from backtest.evaluator import calibrate_down_threshold, exit_positions, positions_from_probs, run_backtest, simulate
 from backtest.metrics import calculate_metrics, periods_per_year
 from config import BacktestConfig
 from tests.conftest import make_raw_ohlcv
@@ -78,12 +78,72 @@ def test_calibration_rejects_bad_input():
         calibrate_down_threshold(np.empty((0, 2)), ["down", "rest"], exit_share=0.1)
 
 
+def test_hysteresis_waits_for_the_reentry_level():
+    scores = np.array([0.1, 0.5, 0.3, 0.25, 0.1, 0.3, 0.45, 0.1])
+
+    plain = exit_positions(scores, exit_threshold=0.4)
+    sticky = exit_positions(scores, exit_threshold=0.4, reentry_threshold=0.2)
+
+    assert plain.tolist() == [1, 0, 1, 1, 1, 1, 0, 1]
+    assert sticky.tolist() == [1, 0, 0, 0, 1, 1, 0, 1]
+    assert exit_positions(scores, 0.4, 0.2, allow_short=True).tolist() == [1, -1, -1, -1, 1, 1, -1, 1]
+
+
+def test_hysteresis_cuts_trades_on_clustered_scores():
+    # Like volatility: a slowly drifting level plus hour-to-hour jitter around it.
+    rng = np.random.default_rng(0)
+    level = np.zeros(5000)
+    for i in range(1, len(level)):
+        level[i] = 0.98 * level[i - 1] + rng.normal(0, 0.01)
+    scores = 0.3 + level + rng.normal(0, 0.02, len(level))
+    exit_at, reentry_at = np.quantile(scores, 0.8), np.quantile(scores, 0.5)
+
+    plain = exit_positions(scores, exit_threshold=exit_at)
+    sticky = exit_positions(scores, exit_threshold=exit_at, reentry_threshold=reentry_at)
+
+    assert np.count_nonzero(np.diff(sticky)) < np.count_nonzero(np.diff(plain)) / 3
+
+
+def test_reentry_above_exit_rejected():
+    with pytest.raises(ValueError):
+        exit_positions(np.array([0.1]), exit_threshold=0.2, reentry_threshold=0.3)
+
+
+def test_strategy_config_validates_reentry_share(monkeypatch):
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    backtest_run.add_strategy_args(parser)
+
+    cfg = backtest_run.strategy_config(parser.parse_args(["--exit-share", "0.2", "--reentry-share", "0.5"]))
+    assert (cfg.rule, cfg.exit_share, cfg.reentry_share) == ("exit-on-down", 0.2, 0.5)
+    with pytest.raises(SystemExit):
+        backtest_run.strategy_config(parser.parse_args(["--exit-share", "0.2", "--reentry-share", "0.1"]))
+    with pytest.raises(SystemExit):
+        backtest_run.strategy_config(parser.parse_args(["--reentry-share", "0.5"]))
+
+
+def test_volatility_rule_exits_in_volatile_periods():
+    from data_pipeline.pipeline import prepare_datasets
+
+    data = prepare_datasets(make_raw_ohlcv(1500), 16, 0.7, 0.15, timeframe="1h")
+    cfg = dataclasses.replace(NO_COSTS, exit_share=0.2)
+
+    result = backtest_run.volatility_rule(data.val, data.train, data.feature_columns, cfg, periods=8760)
+
+    vol = data.val.X[:, -1, data.feature_columns.index("volatility_24")]
+    out = result.frame["position"].to_numpy() == 0
+    assert out.any() and vol[out].min() > vol[~out].max()
+    assert backtest_run.volatility_rule(data.val, data.train, data.feature_columns, NO_COSTS, 8760) is None
+
+
 def test_run_tag_names_strategy_settings():
     base = dataclasses.replace(NO_COSTS, rule="argmax")
     assert backtest_run.run_tag(base) == "argmax"
     assert backtest_run.run_tag(dataclasses.replace(base, min_confidence=0.5, allow_short=True)) == "argmax_conf0.5_short"
     assert backtest_run.run_tag(dataclasses.replace(base, rule="exit-on-down", down_prob_threshold=0.4)) == "exit_p0.4"
     assert backtest_run.run_tag(dataclasses.replace(base, exit_share=0.1)) == "exit_top10pct"
+    assert backtest_run.run_tag(dataclasses.replace(base, exit_share=0.2, reentry_share=0.5)) == "exit_top20pct_re50pct"
 
 
 def test_simulate_charges_costs_on_every_position_change():
@@ -228,21 +288,21 @@ def test_cli_exit_share_calibrates_before_the_traded_period(tmp_path, monkeypatc
     train_small(tmp_path, monkeypatch, raw, label_mode="binary")
     monkeypatch.setattr(backtest_run.CCXTLoader, "load", lambda self: raw)
     calibrations = []
-    original = backtest_run.calibrate_down_threshold
+    original = backtest_run.score_threshold
 
-    def spy(probs, class_names, exit_share):
-        calibrations.append(len(probs))
-        return original(probs, class_names, exit_share)
+    def spy(scores, share):
+        calibrations.append(len(scores))
+        return original(scores, share)
 
-    monkeypatch.setattr(backtest_run, "calibrate_down_threshold", spy)
+    monkeypatch.setattr(backtest_run, "score_threshold", spy)
 
     results = backtest_run.main(["--exit-share", "0.2"])
 
     assert "top 20%" in capsys.readouterr().out
     linear = results["linear"]
     assert linear.down_prob_threshold is not None
-    # Calibrated on as many pre-validation windows as the validation split has.
-    assert calibrations == [len(linear.frame)]
+    # Model and vol_rule both calibrate on as many pre-validation windows as the validation split has.
+    assert calibrations == [len(linear.frame)] * 2
     # Roughly the requested share is spent out of the market (the distribution can drift).
     assert 0.5 < linear.metrics.exposure < 0.97
     summary = json.loads((tmp_path / "backtest_val_exit_top20pct.json").read_text())
@@ -278,3 +338,21 @@ def test_walk_forward_exit_share_calibrates_each_fold(tmp_path, monkeypatch):
     assert all(t is not None for t in thresholds)
     assert report["config"]["exit_share"] == 0.1
     assert (tmp_path / "walk_forward" / "binary_h1_exit_top10pct" / "walk_forward.json").exists()
+
+
+def test_walk_forward_with_hysteresis_includes_volatility_baseline(tmp_path, monkeypatch, capsys):
+    import backtest.walk_forward as walk_forward
+
+    monkeypatch.setattr(walk_forward.CCXTLoader, "load", lambda self: make_raw_ohlcv(2500))
+    monkeypatch.setenv("CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv("EPOCHS", "1")
+    monkeypatch.setenv("SEQUENCE_LENGTH", "16")
+    monkeypatch.setenv("LABEL_MODE", "binary")
+
+    report = walk_forward.main(["--models", "linear", "--folds", "2", "--exit-share", "0.2", "--reentry-share", "0.5"])
+
+    assert "vol_rule" in capsys.readouterr().out
+    assert list(report["totals"]) == ["buy&hold", "vol_rule", "linear"]
+    fold = report["folds"][0]["models"]["linear"]
+    assert fold["reentry_threshold"] < fold["down_prob_threshold"]
+    assert (tmp_path / "walk_forward" / "binary_h1_exit_top20pct_re50pct" / "equity.csv").exists()
