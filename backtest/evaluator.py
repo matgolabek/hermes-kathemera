@@ -28,6 +28,7 @@ class BacktestResult:
     metrics: BacktestMetrics
     gross_metrics: BacktestMetrics
     down_prob_threshold: Optional[float] = None
+    reentry_threshold: Optional[float] = None
 
 
 def positions_from_probs(
@@ -37,6 +38,7 @@ def positions_from_probs(
     class_names: Sequence[str] = CLASS_NAMES,
     rule: str = "argmax",
     down_prob_threshold: float = 0.5,
+    reentry_threshold: Optional[float] = None,
 ) -> np.ndarray:
     """Map class probabilities to positions (1 long, 0 out, -1 short).
 
@@ -45,16 +47,15 @@ def positions_from_probs(
       shorting is allowed, otherwise out, flat → out. Predictions whose probability is
       below ``min_confidence`` are treated as out.
     - ``"exit-on-down"``: long by default; out (or short, if allowed) whenever
-      P(down) > ``down_prob_threshold``. ``min_confidence`` is not used.
+      P(down) > ``down_prob_threshold``. With ``reentry_threshold``, back in only once
+      P(down) falls below it (see ``exit_positions``). ``min_confidence`` is not used.
     """
     names = list(class_names)
     p_down = probs[:, names.index("down")]
     down_position = -1 if allow_short else 0
 
     if rule == "exit-on-down":
-        positions = np.ones(len(probs), dtype=np.int8)
-        positions[p_down > down_prob_threshold] = down_position
-        return positions
+        return exit_positions(p_down, down_prob_threshold, reentry_threshold, allow_short)
     if rule != "argmax":
         raise ValueError(f"Unknown strategy rule {rule!r}; expected one of {STRATEGY_RULES}")
 
@@ -68,18 +69,55 @@ def positions_from_probs(
     return positions
 
 
-def calibrate_down_threshold(probs: np.ndarray, class_names: Sequence[str], exit_share: float) -> float:
-    """P(down) threshold that is exceeded by the top ``exit_share`` of ``probs``.
+def exit_positions(
+    scores: np.ndarray,
+    exit_threshold: float,
+    reentry_threshold: Optional[float] = None,
+    allow_short: bool = False,
+) -> np.ndarray:
+    """Long by default, out (or short) while a risk score is high.
 
-    Pass probabilities from data *before* the traded period; computing the threshold on
-    the traded period itself would use its future.
+    Leaves when ``scores > exit_threshold``. Without ``reentry_threshold`` it returns as
+    soon as the score is back at or below ``exit_threshold``. With it (hysteresis), it
+    stays out until the score falls below ``reentry_threshold``, so a score hovering
+    around the exit level does not flip the position every candle.
     """
-    if not 0 < exit_share < 1:
-        raise ValueError("exit_share must be between 0 and 1")
-    if len(probs) == 0:
-        raise ValueError("Need calibration predictions to set the exit threshold")
-    p_down = probs[:, list(class_names).index("down")]
-    return float(np.quantile(p_down, 1.0 - exit_share))
+    scores = np.asarray(scores, dtype=np.float64)
+    down_position = -1 if allow_short else 0
+    if reentry_threshold is None:
+        positions = np.ones(len(scores), dtype=np.int8)
+        positions[scores > exit_threshold] = down_position
+        return positions
+    if reentry_threshold > exit_threshold:
+        raise ValueError("reentry_threshold must not be above exit_threshold")
+
+    positions = np.empty(len(scores), dtype=np.int8)
+    in_market = True
+    for i, score in enumerate(scores):
+        if in_market and score > exit_threshold:
+            in_market = False
+        elif not in_market and score < reentry_threshold:
+            in_market = True
+        positions[i] = 1 if in_market else down_position
+    return positions
+
+
+def score_threshold(scores: np.ndarray, share: float) -> float:
+    """Level exceeded by the top ``share`` of ``scores``.
+
+    Pass scores from data *before* the traded period; computing the threshold on the
+    traded period itself would use its future.
+    """
+    if not 0 < share < 1:
+        raise ValueError("share must be between 0 and 1")
+    if len(scores) == 0:
+        raise ValueError("Need calibration scores to set a threshold")
+    return float(np.quantile(np.asarray(scores, dtype=np.float64), 1.0 - share))
+
+
+def calibrate_down_threshold(probs: np.ndarray, class_names: Sequence[str], exit_share: float) -> float:
+    """P(down) threshold that is exceeded by the top ``exit_share`` of ``probs``."""
+    return score_threshold(probs[:, list(class_names).index("down")], exit_share)
 
 
 def simulate(

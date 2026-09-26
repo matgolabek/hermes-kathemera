@@ -6,6 +6,10 @@ Usage::
     python -m backtest.walk_forward --models linear gru --folds 4
     python -m backtest.walk_forward --rule exit-on-down --down-threshold 0.4
     python -m backtest.walk_forward --exit-share 0.1   # threshold calibrated on each fold's validation block
+    python -m backtest.walk_forward --exit-share 0.2 --reentry-share 0.5   # with hysteresis
+
+With ``--exit-share`` the report also includes ``vol_rule``: the same exit rule driven by
+plain realized volatility instead of a model, as a non-ML baseline.
 
 The first ``--min-train`` share of the data is only used for training. The rest is
 cut into ``--folds`` consecutive periods. For each period, every model is trained
@@ -35,12 +39,14 @@ from backtest.evaluator import BacktestResult
 from backtest.metrics import calculate_metrics, periods_per_year
 from backtest.run import (
     BUY_AND_HOLD,
+    VOL_RULE,
     add_strategy_args,
     backtest_split,
     buy_and_hold,
     describe_rule,
     run_tag,
     strategy_config,
+    volatility_rule,
 )
 from config import BacktestConfig, ModelConfig, TrainingConfig, get_data_config, get_model_config, get_training_config
 from data_pipeline.loaders import CCXTLoader
@@ -72,6 +78,13 @@ def run_fold(
     }
     backtests = {BUY_AND_HOLD: buy_and_hold(data.test, backtest_cfg, periods)}
     summary["models"][BUY_AND_HOLD] = {"backtest": dataclasses.asdict(backtests[BUY_AND_HOLD].metrics)}
+    baseline = volatility_rule(data.test, data.val, data.feature_columns, backtest_cfg, periods)
+    if baseline is not None:
+        backtests[VOL_RULE] = baseline
+        summary["models"][VOL_RULE] = {
+            "backtest": dataclasses.asdict(baseline.metrics),
+            "gross": dataclasses.asdict(baseline.gross_metrics),
+        }
 
     for name in models:
         logger.info("=== Fold %d: training %s", fold, name)
@@ -83,6 +96,7 @@ def run_fold(
         summary["models"][name] = {
             "best_epoch": result["best_epoch"],
             "down_prob_threshold": backtests[name].down_prob_threshold,
+            "reentry_threshold": backtests[name].reentry_threshold,
             "classification": result["test"],
             "backtest": dataclasses.asdict(backtests[name].metrics),
             "gross": dataclasses.asdict(backtests[name].gross_metrics),

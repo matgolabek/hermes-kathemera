@@ -8,6 +8,7 @@ Usage::
     python -m backtest.run --allow-short --min-confidence 0.5
     python -m backtest.run --rule exit-on-down --down-threshold 0.4
     python -m backtest.run --exit-share 0.1     # exit for the top 10% of P(down)
+    python -m backtest.run --exit-share 0.2 --reentry-share 0.5   # with hysteresis
 
 Reads checkpoints written by ``python -m training.run``, rebuilds each model's inputs
 with the preprocessing stored in its checkpoint (same features, scaler, horizon and
@@ -31,9 +32,10 @@ from torch import nn
 from backtest.evaluator import (
     STRATEGY_RULES,
     BacktestResult,
-    calibrate_down_threshold,
+    exit_positions,
     positions_from_probs,
     run_backtest,
+    score_threshold,
 )
 from backtest.metrics import periods_per_year
 from config import BacktestConfig, get_backtest_config, get_data_config, get_training_config
@@ -48,6 +50,8 @@ from training.train import predict_proba
 logger = logging.getLogger(__name__)
 
 BUY_AND_HOLD = "buy&hold"
+VOL_RULE = "vol_rule"
+VOL_FEATURE = "volatility_24"
 
 
 def check_no_overlap(split: SequenceSet, metadata: dict[str, Any], split_name: str) -> None:
@@ -75,17 +79,18 @@ def backtest_split(
 ) -> BacktestResult:
     """Predict on a split and simulate trading the predictions.
 
-    With ``backtest_cfg.exit_share`` set, the P(down) exit threshold is calibrated on
-    the model's predictions for ``calibration``, which must come before ``split``.
+    With ``backtest_cfg.exit_share`` set, the P(down) exit (and re-entry) thresholds are
+    calibrated on the model's predictions for ``calibration``, which must come before
+    ``split``.
     """
+    probs, _ = predict_proba(model, make_loader(split, 1024, shuffle=False), device)
     if backtest_cfg.exit_share is not None:
         if calibration is None or len(calibration) == 0:
             raise ValueError("exit_share needs a non-empty calibration split before the traded period")
         calibration_probs, _ = predict_proba(model, make_loader(calibration, 1024, shuffle=False), device)
-        threshold = calibrate_down_threshold(calibration_probs, class_names, backtest_cfg.exit_share)
-        backtest_cfg = dataclasses.replace(backtest_cfg, rule="exit-on-down", down_prob_threshold=threshold)
+        down = list(class_names).index("down")
+        return backtest_exit_scores(probs[:, down], calibration_probs[:, down], split, backtest_cfg, periods)
 
-    probs, _ = predict_proba(model, make_loader(split, 1024, shuffle=False), device)
     positions = positions_from_probs(
         probs,
         allow_short=backtest_cfg.allow_short,
@@ -97,6 +102,51 @@ def backtest_split(
     result = run_backtest(positions, split.next_returns, backtest_cfg, periods, split.timestamps)
     if backtest_cfg.rule == "exit-on-down":
         result.down_prob_threshold = backtest_cfg.down_prob_threshold
+    return result
+
+
+def backtest_exit_scores(
+    scores: np.ndarray,
+    calibration_scores: np.ndarray,
+    split: SequenceSet,
+    backtest_cfg: BacktestConfig,
+    periods: float,
+) -> BacktestResult:
+    """Stay long unless a risk score is in its top ``exit_share``, with optional hysteresis.
+
+    Thresholds are quantiles of ``calibration_scores`` (data before ``split``).
+    """
+    exit_at = score_threshold(calibration_scores, backtest_cfg.exit_share)
+    reentry_at = (
+        score_threshold(calibration_scores, backtest_cfg.reentry_share) if backtest_cfg.reentry_share else None
+    )
+    positions = exit_positions(scores, exit_at, reentry_at, backtest_cfg.allow_short)
+    result = run_backtest(positions, split.next_returns, backtest_cfg, periods, split.timestamps)
+    result.down_prob_threshold = exit_at
+    result.reentry_threshold = reentry_at
+    return result
+
+
+def volatility_rule(
+    split: SequenceSet,
+    calibration: SequenceSet,
+    feature_columns: Sequence[str],
+    backtest_cfg: BacktestConfig,
+    periods: float,
+) -> Optional[BacktestResult]:
+    """Non-ML baseline: the same exit rule driven by recent realized volatility.
+
+    Uses the ``volatility_24`` feature of each window's last candle. Features are
+    standardized with a fixed mean and scale, which does not change their order, so
+    quantile thresholds select the same candles as raw volatility would. Returns
+    ``None`` without ``exit_share`` or when the feature is not among the inputs.
+    """
+    if backtest_cfg.exit_share is None or VOL_FEATURE not in feature_columns:
+        return None
+    idx = list(feature_columns).index(VOL_FEATURE)
+    result = backtest_exit_scores(split.X[:, -1, idx], calibration.X[:, -1, idx], split, backtest_cfg, periods)
+    # Thresholds are in standardized volatility units, not probabilities; do not report them as such.
+    result.down_prob_threshold = result.reentry_threshold = None
     return result
 
 
@@ -124,7 +174,7 @@ def backtest_model(
     checkpoint_dir: Path,
     device: str = "cpu",
     cache: Optional[dict[tuple, PreparedData]] = None,
-) -> tuple[BacktestResult, SequenceSet]:
+) -> tuple[BacktestResult, SequenceSet, PreparedData]:
     """Rebuild one model's inputs from its checkpoint, predict and simulate trading."""
     data_cfg = get_data_config()
     model, meta = load_model(checkpoint_dir / f"{model_name}.pt", device)
@@ -160,15 +210,18 @@ def backtest_model(
         device,
         calibration=calibration_split(cache[key], split_name),
     )
-    return result, split
+    return result, split, cache[key]
 
 
 def describe_rule(backtest_cfg: BacktestConfig) -> str:
     """One-line description of how predictions become positions."""
     side = "long/short" if backtest_cfg.allow_short else "long only"
     if backtest_cfg.exit_share is not None:
+        reentry = (
+            f", back in once out of its top {backtest_cfg.reentry_share:.0%}" if backtest_cfg.reentry_share else ""
+        )
         return (
-            f"exit-on-down: long unless P(down) is in its top {backtest_cfg.exit_share:.0%}, "
+            f"exit-on-down: out when P(down) is in its top {backtest_cfg.exit_share:.0%}{reentry}, "
             f"calibrated on data before the traded period, {side}"
         )
     if backtest_cfg.rule == "exit-on-down":
@@ -180,6 +233,8 @@ def run_tag(backtest_cfg: BacktestConfig) -> str:
     """Short name of the strategy settings, used in output file names."""
     if backtest_cfg.exit_share is not None:
         tag = f"exit_top{backtest_cfg.exit_share * 100:g}pct"
+        if backtest_cfg.reentry_share:
+            tag += f"_re{backtest_cfg.reentry_share * 100:g}pct"
     elif backtest_cfg.rule == "exit-on-down":
         tag = f"exit_p{backtest_cfg.down_prob_threshold:g}"
     else:
@@ -222,6 +277,9 @@ def add_strategy_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--exit-share", type=float, help="exit for the top share of P(down) (e.g. 0.1), calibrated before the traded period"
     )
+    parser.add_argument(
+        "--reentry-share", type=float, help="with --exit-share: re-enter only once P(down) leaves its top share (e.g. 0.5)"
+    )
 
 
 def strategy_config(args: argparse.Namespace) -> BacktestConfig:
@@ -233,12 +291,18 @@ def strategy_config(args: argparse.Namespace) -> BacktestConfig:
         "allow_short": args.allow_short,
         "min_confidence": args.min_confidence,
         "exit_share": args.exit_share,
+        "reentry_share": args.reentry_share,
     }
     cfg = dataclasses.replace(cfg, **{k: v for k, v in overrides.items() if v is not None})
     if cfg.exit_share is not None:
         if not 0 < cfg.exit_share < 1:
             raise SystemExit("EXIT_SHARE must be between 0 and 1")
         cfg = dataclasses.replace(cfg, rule="exit-on-down")
+    if cfg.reentry_share is not None:
+        if cfg.exit_share is None:
+            raise SystemExit("REENTRY_SHARE needs EXIT_SHARE")
+        if not cfg.exit_share < cfg.reentry_share < 1:
+            raise SystemExit("REENTRY_SHARE must be larger than EXIT_SHARE and below 1")
     if cfg.rule not in STRATEGY_RULES:
         raise SystemExit(f"Unknown STRATEGY_RULE {cfg.rule!r}; expected one of {STRATEGY_RULES}")
     return cfg
@@ -267,10 +331,16 @@ def main(argv: Optional[Sequence[str]] = None) -> dict[str, BacktestResult]:
 
     cache: dict[tuple, PreparedData] = {}
     results: dict[str, BacktestResult] = {}
+    periods = periods_per_year(data_cfg.timeframe)
     for name in models:
-        result, split = backtest_model(name, raw, args.split, backtest_cfg, checkpoint_dir, train_cfg.device, cache)
+        result, split, data = backtest_model(name, raw, args.split, backtest_cfg, checkpoint_dir, train_cfg.device, cache)
         if BUY_AND_HOLD not in results:
-            results[BUY_AND_HOLD] = buy_and_hold(split, backtest_cfg, periods_per_year(data_cfg.timeframe))
+            results[BUY_AND_HOLD] = buy_and_hold(split, backtest_cfg, periods)
+            baseline = volatility_rule(
+                split, calibration_split(data, args.split), data.feature_columns, backtest_cfg, periods
+            )
+            if baseline is not None:
+                results[VOL_RULE] = baseline
             logger.info("Backtest period: %s -> %s (%d candles)", split.timestamps[0], split.timestamps[-1], len(split))
         results[name] = result
 
@@ -288,6 +358,7 @@ def main(argv: Optional[Sequence[str]] = None) -> dict[str, BacktestResult]:
                 "net": dataclasses.asdict(r.metrics),
                 "gross": dataclasses.asdict(r.gross_metrics),
                 "down_prob_threshold": r.down_prob_threshold,
+                "reentry_threshold": r.reentry_threshold,
             }
             for strategy, r in results.items()
         },

@@ -64,6 +64,7 @@ class BacktestConfig:
     rule: str = "argmax"
     down_prob_threshold: float = 0.5
     exit_share: Optional[float] = None
+    reentry_share: Optional[float] = None
 
     @property
     def cost_per_trade(self) -> float:
@@ -141,6 +142,7 @@ def get_backtest_config() -> BacktestConfig:
         rule=_get_env("STRATEGY_RULE", "argmax"),
         down_prob_threshold=float(_get_env("DOWN_PROB_THRESHOLD", "0.5")),
         exit_share=float(os.environ["EXIT_SHARE"]) if os.getenv("EXIT_SHARE") else None,
+        reentry_share=float(os.environ["REENTRY_SHARE"]) if os.getenv("REENTRY_SHARE") else None,
     )
 
 
