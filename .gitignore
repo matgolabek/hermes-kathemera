@@ -219,3 +219,6 @@ __marimo__/
 
 # Downloaded market data cache
 data/cache/
+
+# Trained models and results
+checkpoints/

@@ -45,6 +45,10 @@ class TrainingConfig:
     epochs: int
     checkpoint_dir: Path
     device: str
+    weight_decay: float
+    patience: int
+    grad_clip: float
+    seed: int
 
 
 @dataclass(frozen=True)
@@ -94,11 +98,15 @@ def get_model_config() -> ModelConfig:
 def get_training_config() -> TrainingConfig:
     """Build training config from environment variables."""
     return TrainingConfig(
-        batch_size=int(_get_env("BATCH_SIZE", "32")),
+        batch_size=int(_get_env("BATCH_SIZE", "256")),
         learning_rate=float(_get_env("LEARNING_RATE", "0.001")),
         epochs=int(_get_env("EPOCHS", "20")),
         checkpoint_dir=Path(_get_env("CHECKPOINT_DIR", "checkpoints")),
         device=_get_env("DEVICE", "cpu"),
+        weight_decay=float(_get_env("WEIGHT_DECAY", "0.0001")),
+        patience=int(_get_env("PATIENCE", "5")),
+        grad_clip=float(_get_env("GRAD_CLIP", "1.0")),
+        seed=int(_get_env("SEED", "42")),
     )
 
 
