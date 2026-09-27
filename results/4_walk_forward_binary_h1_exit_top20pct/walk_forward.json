@@ -1,0 +1,604 @@
+{
+  "config": {
+    "folds": 5,
+    "min_train": 0.5,
+    "val_fraction": 0.1,
+    "fee_rate": 0.001,
+    "slippage": 0.0005,
+    "allow_short": false,
+    "min_confidence": 0.0,
+    "rule": "exit-on-down",
+    "down_prob_threshold": 0.5,
+    "exit_share": 0.2
+  },
+  "data": {
+    "label_mode": "binary",
+    "horizon": 1,
+    "flat_threshold": 0.005
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "train_period": [
+        "2020-01-05 16:00:00+00:00",
+        "2023-01-13 09:00:00+00:00"
+      ],
+      "eval_period": [
+        "2023-05-19 01:00:00+00:00",
+        "2024-01-17 05:00:00+00:00"
+      ],
+      "models": {
+        "buy&hold": {
+          "backtest": {
+            "total_return": 0.5918597224583468,
+            "annual_return": 1.0091522529546504,
+            "annual_volatility": 0.39045719163125,
+            "sharpe": 1.9821211603863031,
+            "max_drawdown": -0.20835752365038107,
+            "exposure": 1.0,
+            "trades": 2,
+            "hit_rate": 0.5131060476272058,
+            "costs": 0.003
+          }
+        },
+        "linear": {
+          "best_epoch": 18,
+          "down_prob_threshold": 0.14267133176326752,
+          "classification": {
+            "log_loss": 0.2285650670528412,
+            "prior_log_loss": 0.27051365683675554,
+            "skill": 0.15507013684425075,
+            "accuracy": 0.9391810861744047,
+            "majority_accuracy": 0.9393524070584204,
+            "balanced_accuracy": 0.4999088090461426,
+            "pred_down": 0.00017132088401576153,
+            "pred_rest": 0.9998286791159843,
+            "direction_ic": -0.04344059221253211,
+            "volatility_ic": 0.22550696175419396,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": 0.0
+          },
+          "backtest": {
+            "total_return": -0.22996857533218606,
+            "annual_return": -0.32442249889255403,
+            "annual_volatility": 0.34983717105583706,
+            "sharpe": -0.9463010602595346,
+            "max_drawdown": -0.3573049478160224,
+            "exposure": 0.9105704985437725,
+            "trades": 502,
+            "hit_rate": 0.5017873941674507,
+            "costs": 0.753
+          },
+          "gross": {
+            "total_return": 0.6358651126661805,
+            "annual_return": 1.0930809407560305,
+            "annual_volatility": 0.34767040813200145,
+            "sharpe": 2.2982376878729984,
+            "max_drawdown": -0.21162638963968705,
+            "exposure": 0.9105704985437725,
+            "trades": 502,
+            "hit_rate": 0.510818438381938,
+            "costs": 0.0
+          }
+        },
+        "gru": {
+          "best_epoch": 5,
+          "down_prob_threshold": 0.1481270045042038,
+          "classification": {
+            "log_loss": 0.2102438062429428,
+            "prior_log_loss": 0.27051365683675554,
+            "skill": 0.22279781101840357,
+            "accuracy": 0.9393524070584204,
+            "majority_accuracy": 0.9393524070584204,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": -0.029771307538378308,
+            "volatility_ic": 0.39061780278428027,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": 0.14810293568582922,
+            "annual_return": 0.23031829764008305,
+            "annual_volatility": 0.32833141778133945,
+            "sharpe": 0.7952684996059548,
+            "max_drawdown": -0.18824271178001362,
+            "exposure": 0.9119410656158986,
+            "trades": 214,
+            "hit_rate": 0.5074206274657148,
+            "costs": 0.321
+          },
+          "gross": {
+            "total_return": 0.5828939203603412,
+            "annual_return": 0.9921933346794869,
+            "annual_volatility": 0.3276003888472986,
+            "sharpe": 2.2675770002082776,
+            "max_drawdown": -0.13342372724896345,
+            "exposure": 0.9119410656158986,
+            "trades": 214,
+            "hit_rate": 0.5117414991546121,
+            "costs": 0.0
+          }
+        }
+      }
+    },
+    {
+      "fold": 2,
+      "train_period": [
+        "2020-01-05 16:00:00+00:00",
+        "2023-08-22 16:00:00+00:00"
+      ],
+      "eval_period": [
+        "2024-01-19 22:00:00+00:00",
+        "2024-09-19 02:00:00+00:00"
+      ],
+      "models": {
+        "buy&hold": {
+          "backtest": {
+            "total_return": 0.4856294897552613,
+            "annual_return": 0.8113330053452905,
+            "annual_volatility": 0.5334190669196218,
+            "sharpe": 1.3805308461851538,
+            "max_drawdown": -0.3231068941589833,
+            "exposure": 1.0,
+            "trades": 2,
+            "hit_rate": 0.5084803837587802,
+            "costs": 0.003
+          }
+        },
+        "linear": {
+          "best_epoch": 18,
+          "down_prob_threshold": 0.1194644421339035,
+          "classification": {
+            "log_loss": 0.33193325996398926,
+            "prior_log_loss": 0.3509655590669655,
+            "skill": 0.054228395383219996,
+            "accuracy": 0.8894980298098338,
+            "majority_accuracy": 0.8896693506938496,
+            "balanced_accuracy": 0.5005838305985243,
+            "pred_down": 0.0005139626520472845,
+            "pred_rest": 0.9994860373479527,
+            "direction_ic": 0.0027880306216953024,
+            "volatility_ic": 0.2871088162528632,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": 0.3333333333333333
+          },
+          "backtest": {
+            "total_return": -0.7250762483182442,
+            "annual_return": -0.8559921864085271,
+            "annual_volatility": 0.3575776912666864,
+            "sharpe": -5.23994557036982,
+            "max_drawdown": -0.7665988321355853,
+            "exposure": 0.6775740962823368,
+            "trades": 1222,
+            "hit_rate": 0.4922882427307206,
+            "costs": 1.8330000000000002
+          },
+          "gross": {
+            "total_return": 0.7213608757503172,
+            "annual_return": 1.2593823706420073,
+            "annual_volatility": 0.3523210519849897,
+            "sharpe": 2.489846961893258,
+            "max_drawdown": -0.16583551991063883,
+            "exposure": 0.6775740962823368,
+            "trades": 1222,
+            "hit_rate": 0.5127686472819216,
+            "costs": 0.0
+          }
+        },
+        "gru": {
+          "best_epoch": 6,
+          "down_prob_threshold": 0.11981792002916336,
+          "classification": {
+            "log_loss": 0.32552364468574524,
+            "prior_log_loss": 0.3509655590669655,
+            "skill": 0.07249119956059813,
+            "accuracy": 0.8896693506938496,
+            "majority_accuracy": 0.8896693506938496,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": -0.018024678146570022,
+            "volatility_ic": 0.3688095259813241,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": -0.4764351054595589,
+            "annual_return": -0.621348989122817,
+            "annual_volatility": 0.31915729154875366,
+            "sharpe": -2.8829934785301585,
+            "max_drawdown": -0.585190879084915,
+            "exposure": 0.6376563303066644,
+            "trades": 604,
+            "hit_rate": 0.4967759269210102,
+            "costs": 0.9060000000000001
+          },
+          "gross": {
+            "total_return": 0.2962404274582173,
+            "annual_return": 0.47609808758472627,
+            "annual_volatility": 0.3166964962496665,
+            "sharpe": 1.387985311770527,
+            "max_drawdown": -0.16938220657076652,
+            "exposure": 0.6376563303066644,
+            "trades": 604,
+            "hit_rate": 0.5085975282106394,
+            "costs": 0.0
+          }
+        }
+      }
+    },
+    {
+      "fold": 3,
+      "train_period": [
+        "2020-01-05 16:00:00+00:00",
+        "2024-03-30 23:00:00+00:00"
+      ],
+      "eval_period": [
+        "2024-09-21 19:00:00+00:00",
+        "2025-05-22 23:00:00+00:00"
+      ],
+      "models": {
+        "buy&hold": {
+          "backtest": {
+            "total_return": 0.7606388648343401,
+            "annual_return": 1.3371943328240659,
+            "annual_volatility": 0.5149018963677781,
+            "sharpe": 1.906347958653126,
+            "max_drawdown": -0.3093611223298155,
+            "exposure": 1.0,
+            "trades": 2,
+            "hit_rate": 0.509336988178859,
+            "costs": 0.003
+          }
+        },
+        "linear": {
+          "best_epoch": 12,
+          "down_prob_threshold": 0.1621776670217514,
+          "classification": {
+            "log_loss": 0.32608917355537415,
+            "prior_log_loss": 0.3405320267524642,
+            "skill": 0.042412613388604026,
+            "accuracy": 0.8939523727942437,
+            "majority_accuracy": 0.8942950145622751,
+            "balanced_accuracy": 0.49980842911877393,
+            "pred_down": 0.00034264176803152307,
+            "pred_rest": 0.9996573582319684,
+            "direction_ic": -0.04699280095996413,
+            "volatility_ic": 0.3120440628516708,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": 0.0
+          },
+          "backtest": {
+            "total_return": -0.6076220289847707,
+            "annual_return": -0.7543913292412164,
+            "annual_volatility": 0.4004866007051441,
+            "sharpe": -3.3051606250999486,
+            "max_drawdown": -0.656144318065125,
+            "exposure": 0.8034949460339216,
+            "trades": 648,
+            "hit_rate": 0.49211087420042643,
+            "costs": 0.9720000000000001
+          },
+          "gross": {
+            "total_return": 0.03780333303676353,
+            "annual_return": 0.05726782420387888,
+            "annual_volatility": 0.39841026073859004,
+            "sharpe": 0.3390394960348319,
+            "max_drawdown": -0.3856704096171636,
+            "exposure": 0.8034949460339216,
+            "trades": 648,
+            "hit_rate": 0.5014925373134328,
+            "costs": 0.0
+          }
+        },
+        "gru": {
+          "best_epoch": 12,
+          "down_prob_threshold": 0.1544492393732071,
+          "classification": {
+            "log_loss": 0.3142792880535126,
+            "prior_log_loss": 0.3405320267524642,
+            "skill": 0.07709330293927086,
+            "accuracy": 0.8942950145622751,
+            "majority_accuracy": 0.8942950145622751,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": -0.038757961201950145,
+            "volatility_ic": 0.38631380996923737,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": -0.34702046764313554,
+            "annual_return": -0.47251920662797675,
+            "annual_volatility": 0.36216920654016876,
+            "sharpe": -1.5852479323415813,
+            "max_drawdown": -0.5121392194081823,
+            "exposure": 0.7903032379647079,
+            "trades": 520,
+            "hit_rate": 0.49577281595491,
+            "costs": 0.78
+          },
+          "gross": {
+            "total_return": 0.4254128356501643,
+            "annual_return": 0.7022748292848047,
+            "annual_volatility": 0.3594266763518925,
+            "sharpe": 1.6595133019379216,
+            "max_drawdown": -0.28474984363040623,
+            "exposure": 0.7903032379647079,
+            "trades": 520,
+            "hit_rate": 0.5016258400173423,
+            "costs": 0.0
+          }
+        }
+      }
+    },
+    {
+      "fold": 4,
+      "train_period": [
+        "2020-01-05 16:00:00+00:00",
+        "2024-11-07 06:00:00+00:00"
+      ],
+      "eval_period": [
+        "2025-05-25 16:00:00+00:00",
+        "2026-01-23 20:00:00+00:00"
+      ],
+      "models": {
+        "buy&hold": {
+          "backtest": {
+            "total_return": -0.1688113422895724,
+            "annual_return": -0.2423170660794779,
+            "annual_volatility": 0.3777359471116655,
+            "sharpe": -0.5456221850255181,
+            "max_drawdown": -0.34761471391952403,
+            "exposure": 1.0,
+            "trades": 2,
+            "hit_rate": 0.5041973616583861,
+            "costs": 0.003
+          }
+        },
+        "linear": {
+          "best_epoch": 13,
+          "down_prob_threshold": 0.14856193959712982,
+          "classification": {
+            "log_loss": 0.24076475203037262,
+            "prior_log_loss": 0.27200870029514346,
+            "skill": 0.11486378277926235,
+            "accuracy": 0.929587116669522,
+            "majority_accuracy": 0.929587116669522,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": -0.0011978562342134765,
+            "volatility_ic": 0.284827849570862,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": -0.6221312136377991,
+            "annual_return": -0.7678943663607727,
+            "annual_volatility": 0.32067800912542577,
+            "sharpe": -4.3937837347286965,
+            "max_drawdown": -0.6309521462847334,
+            "exposure": 0.9023470961110159,
+            "trades": 488,
+            "hit_rate": 0.4966774254794,
+            "costs": 0.732
+          },
+          "gross": {
+            "total_return": -0.2139996313384741,
+            "annual_return": -0.3032876621088364,
+            "annual_volatility": 0.3191478722697465,
+            "sharpe": -0.9726697764920512,
+            "max_drawdown": -0.3412392554592224,
+            "exposure": 0.9023470961110159,
+            "trades": 488,
+            "hit_rate": 0.5018036833111829,
+            "costs": 0.0
+          }
+        },
+        "gru": {
+          "best_epoch": 13,
+          "down_prob_threshold": 0.1673102229833603,
+          "classification": {
+            "log_loss": 0.22806133329868317,
+            "prior_log_loss": 0.27200870029514346,
+            "skill": 0.1615660342804297,
+            "accuracy": 0.929587116669522,
+            "majority_accuracy": 0.929587116669522,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": 0.01186883195354554,
+            "volatility_ic": 0.38432052872013317,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": -0.38649925077265046,
+            "annual_return": -0.5196485970367243,
+            "annual_volatility": 0.334184691815892,
+            "sharpe": -2.026816277831157,
+            "max_drawdown": -0.42270056235048026,
+            "exposure": 0.9304437210896008,
+            "trades": 302,
+            "hit_rate": 0.5030381145277113,
+            "costs": 0.453
+          },
+          "gross": {
+            "total_return": -0.034795792147396476,
+            "annual_return": -0.051762880497020936,
+            "annual_volatility": 0.3335881669590045,
+            "sharpe": 0.007549022108860111,
+            "max_drawdown": -0.22879813575152308,
+            "exposure": 0.9304437210896008,
+            "trades": 302,
+            "hit_rate": 0.5050635242128522,
+            "costs": 0.0
+          }
+        }
+      }
+    },
+    {
+      "fold": 5,
+      "train_period": [
+        "2020-01-05 16:00:00+00:00",
+        "2025-06-16 13:00:00+00:00"
+      ],
+      "eval_period": [
+        "2026-01-26 13:00:00+00:00",
+        "2026-09-26 17:00:00+00:00"
+      ],
+      "models": {
+        "buy&hold": {
+          "backtest": {
+            "total_return": -0.04789704506538894,
+            "annual_return": -0.07101342909206732,
+            "annual_volatility": 0.441313627970342,
+            "sharpe": 0.05369277815757139,
+            "max_drawdown": -0.3541821294939542,
+            "exposure": 1.0,
+            "trades": 2,
+            "hit_rate": 0.49940037690594485,
+            "costs": 0.003
+          }
+        },
+        "linear": {
+          "best_epoch": 9,
+          "down_prob_threshold": 0.12343718856573105,
+          "classification": {
+            "log_loss": 0.2824832499027252,
+            "prior_log_loss": 0.3064029923750121,
+            "skill": 0.07806628220853373,
+            "accuracy": 0.9110844611958198,
+            "majority_accuracy": 0.9112557820798355,
+            "balanced_accuracy": 0.4999059973679263,
+            "pred_down": 0.00017132088401576153,
+            "pred_rest": 0.9998286791159843,
+            "direction_ic": -0.009339598800526322,
+            "volatility_ic": 0.33819745479019686,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": 0.0
+          },
+          "backtest": {
+            "total_return": -0.7843761027188181,
+            "annual_return": -0.8999927109617114,
+            "annual_volatility": 0.29992684807995523,
+            "sharpe": -7.526021850413486,
+            "max_drawdown": -0.7956810141795934,
+            "exposure": 0.7204043172862772,
+            "trades": 982,
+            "hit_rate": 0.47966706302021406,
+            "costs": 1.473
+          },
+          "gross": {
+            "total_return": -0.05844786230116494,
+            "annual_return": -0.08642039422263026,
+            "annual_volatility": 0.295962923753452,
+            "sharpe": -0.15752112157983464,
+            "max_drawdown": -0.2743072310781812,
+            "exposure": 0.7204043172862772,
+            "trades": 982,
+            "hit_rate": 0.49750297265160526,
+            "costs": 0.0
+          }
+        },
+        "gru": {
+          "best_epoch": 16,
+          "down_prob_threshold": 0.11185094714164734,
+          "classification": {
+            "log_loss": 0.27032268047332764,
+            "prior_log_loss": 0.3064029923750121,
+            "skill": 0.11775443712875078,
+            "accuracy": 0.9112557820798355,
+            "majority_accuracy": 0.9112557820798355,
+            "balanced_accuracy": 0.5,
+            "pred_down": 0.0,
+            "pred_rest": 1.0,
+            "direction_ic": 0.0049720953200361045,
+            "volatility_ic": 0.40432631712790446,
+            "ic_noise": 0.026177920774252603,
+            "direction_accuracy": null
+          },
+          "backtest": {
+            "total_return": -0.6381971317895792,
+            "annual_return": -0.7825458928461917,
+            "annual_volatility": 0.2875136743138913,
+            "sharpe": -5.162588177952526,
+            "max_drawdown": -0.6747550154144639,
+            "exposure": 0.7323967791673806,
+            "trades": 710,
+            "hit_rate": 0.4860818713450292,
+            "costs": 1.065
+          },
+          "gross": {
+            "total_return": 0.050287948159838614,
+            "annual_return": 0.07641316486029837,
+            "annual_volatility": 0.2842255244797994,
+            "sharpe": 0.40111231928489416,
+            "max_drawdown": -0.21826940061137723,
+            "exposure": 0.7323967791673806,
+            "trades": 710,
+            "hit_rate": 0.5003508771929824,
+            "costs": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "buy&hold": {
+      "mean_sharpe": 0.9554141116713272,
+      "folds_beating_buy_and_hold": 0,
+      "stitched": {
+        "total_return": 2.2951038874208463,
+        "annual_return": 0.430344278386644,
+        "annual_volatility": 0.4559692474021868,
+        "sharpe": 1.0130118957308372,
+        "max_drawdown": -0.5315188539048212,
+        "exposure": 1.0,
+        "trades": 10,
+        "hit_rate": 0.5069042316258352,
+        "costs": 0.015000000000000001
+      }
+    },
+    "linear": {
+      "mean_sharpe": -4.282242568174297,
+      "folds_beating_buy_and_hold": 0,
+      "mean_skill": 0.08892824212077417,
+      "mean_direction_ic": -0.019636563517108147,
+      "mean_volatility_ic": 0.2895370290439574,
+      "stitched": {
+        "total_return": -0.993231954994648,
+        "annual_return": -0.7767433246417448,
+        "annual_volatility": 0.34744349884894304,
+        "sharpe": -4.141483334945869,
+        "max_drawdown": -0.9938289585381842,
+        "exposure": 0.8028781908514648,
+        "trades": 3842,
+        "hit_rate": 0.4931290542847388,
+        "costs": 5.763
+      }
+    },
+    "gru": {
+      "mean_sharpe": -2.172475473409894,
+      "folds_beating_buy_and_hold": 0,
+      "mean_skill": 0.1303405569854906,
+      "mean_direction_ic": -0.013942603922663365,
+      "mean_volatility_ic": 0.38687759691657586,
+      "stitched": {
+        "total_return": -0.9128759575652547,
+        "annual_return": -0.5192957226685601,
+        "annual_volatility": 0.3271948730227624,
+        "sharpe": -2.075087778618337,
+        "max_drawdown": -0.9440165394738773,
+        "exposure": 0.8005482268288504,
+        "trades": 2350,
+        "hit_rate": 0.4985019688409519,
+        "costs": 3.525
+      }
+    }
+  }
+}

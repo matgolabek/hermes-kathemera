@@ -92,7 +92,7 @@ def train_and_evaluate(
             logger.warning("The %s split is empty; skipping its metrics", name)
             continue
         probs, labels = predict_proba(best_model, make_loader(split, train_cfg.batch_size, shuffle=False), train_cfg.device)
-        result[name] = classification_metrics(probs, labels, prior, data.class_names, split.returns)
+        result[name] = classification_metrics(probs, labels, prior, data.class_names, split.returns, data.horizon)
     return result
 
 
