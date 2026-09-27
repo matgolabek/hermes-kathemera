@@ -42,7 +42,9 @@ def move_score(probs: np.ndarray, class_names: Sequence[str]) -> np.ndarray:
     return probs[:, names.index("down")]
 
 
-def direction_metrics(probs: np.ndarray, returns: np.ndarray, class_names: Sequence[str]) -> dict[str, Optional[float]]:
+def direction_metrics(
+    probs: np.ndarray, returns: np.ndarray, class_names: Sequence[str], horizon: int = 1
+) -> dict[str, Optional[float]]:
     """Separate what a model knows about direction from what it knows about volatility.
 
     - ``direction_ic``: rank correlation between ``direction_score`` and the forward
@@ -50,7 +52,9 @@ def direction_metrics(probs: np.ndarray, returns: np.ndarray, class_names: Seque
     - ``volatility_ic``: rank correlation between ``move_score`` and the absolute forward
       return. High volatility IC with direction IC near 0 means the model predicts
       *when* the price moves, not *which way*.
-    - ``ic_noise``: 2 / sqrt(samples); correlations smaller than this are likely luck.
+    - ``ic_noise``: 2 / sqrt(samples / horizon); correlations smaller than this are
+      likely luck. Forward returns over ``horizon`` candles taken every candle overlap,
+      so there are only about ``samples / horizon`` independent observations.
     - ``direction_accuracy``: among predictions of up or down, the share where the
       return had that sign (``None`` if the model never predicts a direction).
     """
@@ -69,7 +73,7 @@ def direction_metrics(probs: np.ndarray, returns: np.ndarray, class_names: Seque
     return {
         "direction_ic": rank_correlation(direction_score(probs, names), returns),
         "volatility_ic": rank_correlation(move_score(probs, names), np.abs(returns)),
-        "ic_noise": 2.0 / np.sqrt(len(returns)),
+        "ic_noise": 2.0 / np.sqrt(max(len(returns) / horizon, 1.0)),
         "direction_accuracy": float(correct[directional].mean()) if directional.any() else None,
     }
 
@@ -80,6 +84,7 @@ def classification_metrics(
     train_prior: np.ndarray,
     class_names: Sequence[str],
     returns: Optional[np.ndarray] = None,
+    horizon: int = 1,
 ) -> dict[str, Optional[float]]:
     """Score predicted class probabilities against true labels.
 
@@ -94,7 +99,7 @@ def classification_metrics(
       class), ``balanced_accuracy`` (mean per-class recall), and the share of
       predictions per class (``pred_<name>``).
 
-    With the forward ``returns``, also adds ``direction_metrics``.
+    With the forward ``returns`` (over ``horizon`` candles), also adds ``direction_metrics``.
     """
     num_classes = len(class_names)
     if len(labels) == 0:
@@ -116,5 +121,5 @@ def classification_metrics(
     pred_share = np.bincount(preds, minlength=num_classes) / len(preds)
     metrics.update({f"pred_{name}": float(share) for name, share in zip(class_names, pred_share)})
     if returns is not None:
-        metrics.update(direction_metrics(probs, returns, class_names))
+        metrics.update(direction_metrics(probs, returns, class_names, horizon))
     return metrics

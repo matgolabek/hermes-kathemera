@@ -1,0 +1,92 @@
+[
+  {
+    "model": "constant",
+    "parameters": 3,
+    "best_epoch": 4,
+    "epochs_run": 9,
+    "checkpoint": "checkpoints/constant.pt",
+    "val": {
+      "log_loss": 1.0321946144104004,
+      "prior_log_loss": 1.0326155640954662,
+      "skill": 0.0004076538255884943,
+      "accuracy": 0.5497687168065787,
+      "majority_accuracy": 0.5497687168065787,
+      "balanced_accuracy": 0.3333333333333333,
+      "pred_down": 0.0,
+      "pred_flat": 1.0,
+      "pred_up": 0.0
+    }
+  },
+  {
+    "model": "linear",
+    "parameters": 3075,
+    "best_epoch": 2,
+    "epochs_run": 7,
+    "checkpoint": "checkpoints/linear.pt",
+    "val": {
+      "log_loss": 0.9538029432296753,
+      "prior_log_loss": 1.0326155640954662,
+      "skill": 0.07632329359167456,
+      "accuracy": 0.5602192907315402,
+      "majority_accuracy": 0.5497687168065787,
+      "balanced_accuracy": 0.3694561347694238,
+      "pred_down": 0.04642795956827137,
+      "pred_flat": 0.907315401747473,
+      "pred_up": 0.04625663868425561
+    }
+  },
+  {
+    "model": "mlp",
+    "parameters": 65795,
+    "best_epoch": 5,
+    "epochs_run": 10,
+    "checkpoint": "checkpoints/mlp.pt",
+    "val": {
+      "log_loss": 0.9466179609298706,
+      "prior_log_loss": 1.0326155640954662,
+      "skill": 0.08328133543186167,
+      "accuracy": 0.5590200445434298,
+      "majority_accuracy": 0.5497687168065787,
+      "balanced_accuracy": 0.37934612334011897,
+      "pred_down": 0.047798526640397465,
+      "pred_flat": 0.8689395237279425,
+      "pred_up": 0.0832619496316601
+    }
+  },
+  {
+    "model": "lstm",
+    "parameters": 54595,
+    "best_epoch": 8,
+    "epochs_run": 13,
+    "checkpoint": "checkpoints/lstm.pt",
+    "val": {
+      "log_loss": 0.9421385526657104,
+      "prior_log_loss": 1.0326155640954662,
+      "skill": 0.08761925984430641,
+      "accuracy": 0.5603906116155559,
+      "majority_accuracy": 0.5497687168065787,
+      "balanced_accuracy": 0.3726652745641825,
+      "pred_down": 0.032208326194963166,
+      "pred_flat": 0.8989206784307007,
+      "pred_up": 0.06887099537433614
+    }
+  },
+  {
+    "model": "gru",
+    "parameters": 41027,
+    "best_epoch": 3,
+    "epochs_run": 8,
+    "checkpoint": "checkpoints/gru.pt",
+    "val": {
+      "log_loss": 0.9421597719192505,
+      "prior_log_loss": 1.0326155640954662,
+      "skill": 0.08759871080913995,
+      "accuracy": 0.5605619324995716,
+      "majority_accuracy": 0.5497687168065787,
+      "balanced_accuracy": 0.37534264969894204,
+      "pred_down": 0.027582662326537603,
+      "pred_flat": 0.8929244474901491,
+      "pred_up": 0.07949289018331335
+    }
+  }
+]

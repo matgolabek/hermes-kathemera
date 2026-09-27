@@ -1,0 +1,155 @@
+{
+  "split": "test",
+  "config": {
+    "fee_rate": 0.001,
+    "slippage": 0.0005,
+    "allow_short": false,
+    "min_confidence": 0.0
+  },
+  "results": {
+    "buy&hold": {
+      "net": {
+        "total_return": -0.044635902737506505,
+        "annual_return": -0.06623393666887178,
+        "annual_volatility": 0.4413094430415046,
+        "sharpe": 0.06531733993396321,
+        "max_drawdown": -0.35418212949395667,
+        "exposure": 1.0,
+        "trades": 2,
+        "hit_rate": 0.49940037690594485,
+        "costs": 0.003
+      },
+      "gross": {
+        "total_return": -0.04176618862720072,
+        "annual_return": -0.062021352753946046,
+        "annual_volatility": 0.44131183598837653,
+        "sharpe": 0.07551909788347926,
+        "max_drawdown": -0.3541821294939579,
+        "exposure": 1.0,
+        "trades": 2,
+        "hit_rate": 0.4995716977899606,
+        "costs": 0.0
+      }
+    },
+    "constant": {
+      "net": {
+        "total_return": 0.0,
+        "annual_return": 0.0,
+        "annual_volatility": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "exposure": 0.0,
+        "trades": 0,
+        "hit_rate": 0.0,
+        "costs": 0.0
+      },
+      "gross": {
+        "total_return": 0.0,
+        "annual_return": 0.0,
+        "annual_volatility": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "exposure": 0.0,
+        "trades": 0,
+        "hit_rate": 0.0,
+        "costs": 0.0
+      }
+    },
+    "linear": {
+      "net": {
+        "total_return": -0.5476257451588177,
+        "annual_return": -0.6959246402159498,
+        "annual_volatility": 0.18245285859910595,
+        "sharpe": -6.432579239478463,
+        "max_drawdown": -0.5476257451588177,
+        "exposure": 0.07469590543087203,
+        "trades": 432,
+        "hit_rate": 0.4541284403669725,
+        "costs": 0.6480000000000001
+      },
+      "gross": {
+        "total_return": -0.13458141216073904,
+        "annual_return": -0.1950091696900048,
+        "annual_volatility": 0.1771474284912476,
+        "sharpe": -1.1354548040772516,
+        "max_drawdown": -0.1663916412708102,
+        "exposure": 0.07469590543087203,
+        "trades": 432,
+        "hit_rate": 0.5137614678899083,
+        "costs": 0.0
+      }
+    },
+    "mlp": {
+      "net": {
+        "total_return": -0.5649114775134774,
+        "annual_return": -0.713194283075675,
+        "annual_volatility": 0.2403573151327739,
+        "sharpe": -5.075285758877864,
+        "max_drawdown": -0.565495284252237,
+        "exposure": 0.1384272742847353,
+        "trades": 680,
+        "hit_rate": 0.49504950495049505,
+        "costs": 1.02
+      },
+      "gross": {
+        "total_return": 0.20729868911475324,
+        "annual_return": 0.32673799983901053,
+        "annual_volatility": 0.2371270183256535,
+        "sharpe": 1.311129817755191,
+        "max_drawdown": -0.18210017699225078,
+        "exposure": 0.1384272742847353,
+        "trades": 680,
+        "hit_rate": 0.5358910891089109,
+        "costs": 0.0
+      }
+    },
+    "lstm": {
+      "net": {
+        "total_return": -0.5228927702085719,
+        "annual_return": -0.6706359248894544,
+        "annual_volatility": 0.2574056010207701,
+        "sharpe": -4.185361847357857,
+        "max_drawdown": -0.5324520549516576,
+        "exposure": 0.12249443207126949,
+        "trades": 514,
+        "hit_rate": 0.4755244755244755,
+        "costs": 0.7710000000000001
+      },
+      "gross": {
+        "total_return": 0.03196680440137101,
+        "annual_return": 0.048356824462229,
+        "annual_volatility": 0.25497638072152656,
+        "sharpe": 0.3128086443647969,
+        "max_drawdown": -0.21482845032736952,
+        "exposure": 0.12249443207126949,
+        "trades": 514,
+        "hit_rate": 0.5230769230769231,
+        "costs": 0.0
+      }
+    },
+    "gru": {
+      "net": {
+        "total_return": -0.5899956874704855,
+        "annual_return": -0.7376481574318567,
+        "annual_volatility": 0.2530651892627499,
+        "sharpe": -5.160183755178028,
+        "max_drawdown": -0.5940851899732327,
+        "exposure": 0.13774199074867227,
+        "trades": 538,
+        "hit_rate": 0.47512437810945274,
+        "costs": 0.807
+      },
+      "gross": {
+        "total_return": -0.0805873596196307,
+        "annual_return": -0.11846903108347862,
+        "annual_volatility": 0.25014936631274975,
+        "sharpe": -0.3787366254046072,
+        "max_drawdown": -0.20322130020020734,
+        "exposure": 0.13774199074867227,
+        "trades": 538,
+        "hit_rate": 0.5261194029850746,
+        "costs": 0.0
+      }
+    }
+  }
+}

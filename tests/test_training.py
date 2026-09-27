@@ -101,6 +101,17 @@ def test_direction_metrics_for_binary_and_no_directional_predictions():
     assert metrics["direction_accuracy"] is None  # argmax never picks "down"
 
 
+def test_ic_noise_accounts_for_overlapping_horizons():
+    probs = np.tile([0.3, 0.7], (2400, 1))
+    returns = np.linspace(-0.01, 0.01, 2400)
+
+    hourly = classification_metrics(probs, np.ones(2400, dtype=int), np.array([0.3, 0.7]), ["down", "rest"], returns)
+    daily = classification_metrics(probs, np.ones(2400, dtype=int), np.array([0.3, 0.7]), ["down", "rest"], returns, 24)
+
+    assert hourly["ic_noise"] == pytest.approx(2 / np.sqrt(2400))
+    assert daily["ic_noise"] == pytest.approx(2 / np.sqrt(100))
+
+
 def test_metrics_reject_empty_split():
     with pytest.raises(ValueError):
         classification_metrics(np.empty((0, 3)), np.empty(0, dtype=np.int64), np.ones(3) / 3, CLASS_NAMES)

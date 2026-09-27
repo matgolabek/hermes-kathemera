@@ -23,6 +23,5 @@ class ExchangeClient:
         self.api_secret = api_secret
 
     def place_market_order(self, order: OrderRequest) -> dict[str, Any]:
-        """Place a market order through the connected exchange."""
-        # TODO: Implement exchange-specific order placement via CCXT.
-        pass
+        """Place a market order through the connected exchange (not implemented)."""
+        raise NotImplementedError("Live order placement is intentionally not implemented; see the README.")
